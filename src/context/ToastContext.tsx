@@ -6,6 +6,7 @@ interface ToastContextValue {
   matchLocked: () => void;
   scoresUpdated: () => void;
   leaderboardChanged: () => void;
+  caughtCopying: () => void;
   error: (message: string) => void;
   info: (message: string) => void;
 }
@@ -29,6 +30,8 @@ export function ToastProvider({ children }: { children: ReactNode }) {
       toast.success('Scores updated', { icon: '📊', style: toastStyle }),
     leaderboardChanged: () =>
       toast('Leaderboard changed', { icon: '🏆', style: toastStyle }),
+    caughtCopying: () =>
+      toast('بطل تقليد 👀', { icon: '😏', style: toastStyle, duration: 2500 }),
     error: (message: string) => toast.error(message, { style: toastStyle }),
     info: (message: string) => toast(message, { icon: 'ℹ️', style: toastStyle }),
   };

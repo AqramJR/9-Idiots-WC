@@ -1,4 +1,4 @@
-// Core domain types for World Cup Predictor
+// Core domain types for 9 idiots WC
 
 export type MatchStatus = 'scheduled' | 'live' | 'finished';
 

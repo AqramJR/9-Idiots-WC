@@ -21,7 +21,13 @@ export function MatchCard({ match, prediction, onSave, usersMap, currentUserId }
   const [locked, setLocked] = useState(isLocked(match.kickoff));
   const [countdown, setCountdown] = useState(formatCountdown(msUntil(match.kickoff)));
   const [showPredictions, setShowPredictions] = useState(false);
+  const [viewedOthers, setViewedOthers] = useState(false);
+  const [warnedThisView, setWarnedThisView] = useState(false);
   const toast = useAppToast();
+
+  // You unlock everyone else's picks the moment you've submitted your own —
+  // no waiting for kickoff. Keeps things friendly and fast-paced.
+  const canViewOthers = !!prediction;
   const { predictions: allPredictions, loading: loadingAll } = usePredictionsForMatch(match.id, showPredictions);
 
   // Keep inputs synced if prediction loads/changes from Firestore (e.g. cross-device).
@@ -47,6 +53,27 @@ export function MatchCard({ match, prediction, onSave, usersMap, currentUserId }
     return () => clearInterval(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [match.kickoff]);
+
+  const togglePredictions = () => {
+    setShowPredictions((v) => {
+      const next = !v;
+      if (next && canViewOthers) {
+        // Fresh peek — arm the "caught you" jab for their next edit.
+        setViewedOthers(true);
+        setWarnedThisView(false);
+      }
+      return next;
+    });
+  };
+
+  const handleScoreChange = (setter: (v: string) => void) => (v: string) => {
+    if (!locked && viewedOthers && !warnedThisView) {
+      toast.caughtCopying();
+      setWarnedThisView(true);
+    }
+    setter(v);
+    setDirty(true);
+  };
 
   const handleSave = async () => {
     if (locked) return;
@@ -103,23 +130,9 @@ export function MatchCard({ match, prediction, onSave, usersMap, currentUserId }
             </div>
           ) : (
             <>
-              <ScoreInput
-                value={home}
-                disabled={locked}
-                onChange={(v) => {
-                  setHome(v);
-                  setDirty(true);
-                }}
-              />
+              <ScoreInput value={home} disabled={locked} onChange={handleScoreChange(setHome)} />
               <span className="text-chalk-500">–</span>
-              <ScoreInput
-                value={away}
-                disabled={locked}
-                onChange={(v) => {
-                  setAway(v);
-                  setDirty(true);
-                }}
-              />
+              <ScoreInput value={away} disabled={locked} onChange={handleScoreChange(setAway)} />
             </>
           )}
         </div>
@@ -134,7 +147,7 @@ export function MatchCard({ match, prediction, onSave, usersMap, currentUserId }
           </span>
         ) : (
           <span className="text-sm text-chalk-500">
-            {prediction ? 'Prediction saved' : 'No prediction yet'}
+            {prediction ? 'Prediction saved' : 'No prediction yet — submit to see everyone else\u2019s 👀'}
           </span>
         )}
 
@@ -153,10 +166,10 @@ export function MatchCard({ match, prediction, onSave, usersMap, currentUserId }
         )}
       </div>
 
-      {locked && (
+      {canViewOthers && (
         <div className="mt-3 border-t border-white/5 pt-3">
           <button
-            onClick={() => setShowPredictions((v) => !v)}
+            onClick={togglePredictions}
             className="text-xs font-semibold text-turf-400 hover:text-turf-300"
           >
             {showPredictions ? '▲ Hide everyone\u2019s predictions' : '▼ See everyone\u2019s predictions'}

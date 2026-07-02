@@ -43,7 +43,7 @@ export function JoinForm() {
         className="glass-card w-full max-w-md animate-fade-up p-8"
       >
         <h1 className="mb-1 text-center font-display text-2xl font-bold text-chalk-100">
-          Join the prediction game
+          Join the idiots
         </h1>
         <p className="mb-6 text-center text-sm text-chalk-500">
           Just your name — no password, no email.

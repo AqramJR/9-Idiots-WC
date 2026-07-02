@@ -15,7 +15,7 @@ const firebaseConfig = {
 if (!firebaseConfig.apiKey) {
   // eslint-disable-next-line no-console
   console.warn(
-    '[World Cup Predictor] Firebase env vars are missing. Copy .env.example to .env and fill in your project credentials.'
+    '[9 idiots WC] Firebase env vars are missing. Copy .env.example to .env and fill in your project credentials.'
   );
 }
 

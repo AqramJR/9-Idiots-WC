@@ -24,8 +24,8 @@ export function Navbar() {
     <header className="sticky top-0 z-40 border-b border-white/5 bg-pitch-950/80 backdrop-blur-lg">
       <nav className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3">
         <NavLink to="/matches" className="flex items-center gap-2 font-display text-lg font-bold tracking-wide text-chalk-100">
-          <span className="text-2xl">🏆</span>
-          <span className="hidden sm:inline">World Cup Predictor</span>
+          <span className="text-2xl">🤡</span>
+          <span className="hidden sm:inline">9 idiots WC</span>
         </NavLink>
 
         <div className="hidden items-center gap-1 md:flex">

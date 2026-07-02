@@ -1,6 +1,6 @@
-# 🏆 World Cup Predictor
+# 🤡 9 idiots WC
 
-Predict every match, compete with your friends, and watch a live leaderboard update as results come in.
+Predict every match, talk trash, and see who's the biggest idiot on the leaderboard by the end of the tournament.
 
 Built with **React + TypeScript + Tailwind CSS**, **Firebase** (Anonymous Auth + Firestore + Hosting).
 
@@ -9,7 +9,7 @@ Built with **React + TypeScript + Tailwind CSS**, **Firebase** (Anonymous Auth +
 ## Features
 
 - **No sign-up friction** — friends just type their name (+ optional emoji avatar) and start predicting. Backed by Firebase Anonymous Auth.
-- **Live match predictions** — score inputs autosave to Firestore, and lock automatically the instant kickoff passes. Once locked, everyone can see everyone else's predictions for that match.
+- **Live match predictions** — score inputs autosave to Firestore, and lock automatically the instant kickoff passes. Submit your pick and everyone else's picks for that match unlock immediately — try to sneak an edit after peeking and you'll get called out with a "بطل تقليد" toast first.
 - **Automatic live sync** — a free GitHub Actions workflow re-imports real results and recalculates the leaderboard every 15 minutes, with no manual steps (see "Automatic live sync" below).
 - **Live leaderboard** — ranked by points → exact predictions → correct outcomes, top 3 get medals 🥇🥈🥉. Scoring rules are shown right on the leaderboard page.
 - **Admin dashboard** — protected page with two tabs: **Matches** (create/edit/delete matches, enter final scores, recalculate standings, reset all data) and **Players** (edit anyone's points/exact/correct totals directly, or remove a player and their predictions entirely).
@@ -39,7 +39,7 @@ Built with **React + TypeScript + Tailwind CSS**, **Firebase** (Anonymous Auth +
 ## Project Structure
 
 ```
-world-cup-predictor/
+9-idiots-wc/
 ├── public/
 │   └── trophy.svg
 ├── scripts/
@@ -318,7 +318,7 @@ This uses **GitHub's free scheduled-workflow minutes** — no Firebase billing u
 
 Each `MatchCard` compares `Date.now()` to `match.kickoff` on a 15-second interval and disables its inputs the instant kickoff passes, showing **"Predictions closed."** This is a UX convenience — the same rule is **enforced server-side** in `firestore.rules`, so a predicted score can never be written or edited after kickoff even if someone tampers with the client.
 
-Once a match is locked, players can also expand **"See everyone's predictions"** on that match's card to see what everyone else picked — predictions stay hidden before kickoff so no one can copy another player's pick.
+The moment you submit your own prediction for a match, **"See everyone's predictions"** unlocks on that card — no waiting for kickoff. If you peek at everyone else's picks and then go change your own before kickoff, you'll get called out with a playful "بطل تقليد" toast first — it doesn't block the edit, it just roasts you a little before letting you through.
 
 ## How the leaderboard stays live
 

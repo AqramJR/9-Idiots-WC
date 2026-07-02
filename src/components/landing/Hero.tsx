@@ -10,21 +10,21 @@ export function Hero() {
 
       <div className="relative mx-auto flex min-h-[88vh] max-w-4xl flex-col items-center justify-center px-4 text-center">
         <div className="mb-6 flex h-20 w-20 items-center justify-center rounded-2xl border border-white/10 bg-white/5 text-4xl shadow-glow animate-fade-up">
-          🏆
+          🤡
         </div>
 
         <h1
           className="animate-fade-up font-display text-5xl font-bold tracking-tight text-chalk-100 sm:text-6xl md:text-7xl"
           style={{ animationDelay: '0.05s' }}
         >
-          World Cup <span className="text-turf-400">Predictor</span>
+          9 idiots <span className="text-turf-400">WC</span>
         </h1>
 
         <p
           className="mt-5 max-w-xl animate-fade-up text-lg text-chalk-300 sm:text-xl"
           style={{ animationDelay: '0.15s' }}
         >
-          Predict every match and compete with your friends.
+          Predict every match. Talk trash. Find out who's the biggest idiot.
         </p>
 
         <button
@@ -32,7 +32,7 @@ export function Hero() {
           className="btn-primary mt-10 animate-fade-up px-10 py-4 text-lg"
           style={{ animationDelay: '0.25s' }}
         >
-          Start Predicting
+          Let's go
           <span aria-hidden>→</span>
         </button>
 
