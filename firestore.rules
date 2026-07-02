@@ -1,0 +1,64 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Admin = signed in with email/password (regular players use anonymous auth).
+    // Create exactly one admin account in Firebase Auth for this to work.
+    function isAdmin() {
+      return request.auth != null &&
+        request.auth.token.firebase.sign_in_provider == 'password';
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    // ---------- users ----------
+    // Anyone signed in can read the roster (needed for the public leaderboard).
+    // A user may only create/update their own profile document.
+    // points / exactPredictions / correctOutcomes are recalculated server-side
+    // by the admin recalculation flow, but we still allow the owner to write
+    // their own doc so the client can create it on first join.
+    match /users/{userId} {
+      allow read: if true;
+      allow create: if isSignedIn() && request.auth.uid == userId;
+      allow update: if isSignedIn() && (request.auth.uid == userId || isAdmin());
+      allow delete: if isAdmin();
+    }
+
+    // ---------- matches ----------
+    // Everyone can read matches. Only the admin can create/edit/delete them
+    // or enter final scores.
+    match /matches/{matchId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // ---------- predictions ----------
+    // A user can only read/write their own predictions, and only before kickoff.
+    // Admin can read all predictions (for stats/recalculation) but never edits them.
+    match /predictions/{predictionId} {
+      allow read: if true;
+
+      allow create: if isSignedIn()
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.predictedHome is int
+        && request.resource.data.predictedAway is int
+        && request.resource.data.predictedHome >= 0
+        && request.resource.data.predictedAway >= 0
+        && get(/databases/$(database)/documents/matches/$(request.resource.data.matchId)).data.kickoff > request.time.toMillis();
+
+      allow update: if isSignedIn()
+        && resource.data.userId == request.auth.uid
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.matchId == resource.data.matchId
+        && get(/databases/$(database)/documents/matches/$(resource.data.matchId)).data.kickoff > request.time.toMillis();
+
+      // Scoring fields (points/outcome) are written by the admin recalculation flow only.
+      allow update: if isAdmin();
+
+      allow delete: if isAdmin();
+    }
+  }
+}

@@ -1,0 +1,72 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+  }
+  body {
+    background-color: #071a10;
+    background-image: var(--tw-gradient-stops, none);
+  }
+  ::selection {
+    background-color: rgba(74, 222, 128, 0.3);
+  }
+  :focus-visible {
+    outline: 2px solid #4ade80;
+    outline-offset: 2px;
+  }
+}
+
+@layer components {
+  .glass-card {
+    @apply relative rounded-2xl border border-white/10 bg-white/[0.04] backdrop-blur-xl shadow-glass;
+  }
+
+  .glass-card::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    padding: 1px;
+    background: linear-gradient(135deg, rgba(74, 222, 128, 0.35), rgba(255, 255, 255, 0) 40%);
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    pointer-events: none;
+  }
+
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl bg-turf-500 px-6 py-3 font-display font-semibold tracking-wide text-pitch-950 transition-all hover:bg-turf-400 hover:shadow-glow active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40;
+  }
+
+  .btn-secondary {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl border border-white/15 bg-white/5 px-6 py-3 font-display font-semibold tracking-wide text-chalk-100 transition-all hover:border-turf-400/50 hover:bg-white/10 active:scale-[0.98];
+  }
+
+  .input-field {
+    @apply w-full rounded-lg border border-white/10 bg-pitch-900/60 px-3 py-2 text-center font-mono text-lg text-chalk-100 outline-none transition-colors focus:border-turf-400;
+  }
+
+  .text-input {
+    @apply w-full rounded-lg border border-white/10 bg-pitch-900/60 px-3 py-2 text-sm normal-case tracking-normal text-chalk-100 outline-none transition-colors focus:border-turf-400;
+  }
+
+  .skeleton {
+    @apply relative overflow-hidden bg-white/5;
+  }
+  .skeleton::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(
+      90deg,
+      transparent,
+      rgba(255, 255, 255, 0.06),
+      transparent
+    );
+    background-size: 500px 100%;
+    animation: shimmer 1.8s linear infinite;
+  }
+}

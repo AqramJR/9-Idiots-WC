@@ -1,0 +1,21 @@
+import type { ReactNode } from 'react';
+import { Navigate } from 'react-router-dom';
+import { useAuth } from '@/context/AuthContext';
+
+export function RequireIdentity({ children }: { children: ReactNode }) {
+  const { identity, authReady } = useAuth();
+
+  if (!authReady) {
+    return (
+      <div className="flex min-h-[60vh] items-center justify-center">
+        <div className="animate-pulse-slow text-3xl">⚽</div>
+      </div>
+    );
+  }
+
+  if (!identity) {
+    return <Navigate to="/join" replace />;
+  }
+
+  return <>{children}</>;
+}
