@@ -10,7 +10,7 @@ name: Sync World Cup data
 # the new scores automatically.
 on:
   schedule:
-    - cron: '*/15 * * * *'
+    - cron: '*/5 * * * *'
   workflow_dispatch: {}
 
 jobs:
