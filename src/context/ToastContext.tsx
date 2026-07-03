@@ -1,4 +1,4 @@
-import { createContext, useContext, type ReactNode } from 'react';
+import { createContext, useContext, useRef, type ReactNode } from 'react';
 import toast, { Toaster } from 'react-hot-toast';
 
 interface ToastContextValue {
@@ -20,7 +20,22 @@ const toastStyle = {
   backdropFilter: 'blur(8px)',
 };
 
+// Shown when a player peeks at everyone else's predictions and then goes
+// back to edit their own. Add/remove/edit lines here freely — one is picked
+// at random each time (never the same line twice in a row) so repeat
+// peekers get a fresh roast instead of seeing the same message on loop.
+const COPY_CATCH_MESSAGES: Array<{ text: string; icon: string }> = [
+  { text: 'بطل تقليد 👀', icon: '😏' },
+  { text: 'يبني شايفك والله 👁️', icon: '🕵️' },
+  { text: 'ولما اخصم منك 5 نقط دولقتي', icon: '' },
+  { text: 'يبني خلي عندك شخصية 🧠', icon: '🙅' },
+  { text: 'طب تمام متجيش تعيط على الجروب', icon: '' },
+  { text: 'اتمنى تكون اشبعت فضولك', icon: '' },
+];
+
 export function ToastProvider({ children }: { children: ReactNode }) {
+  const lastIndex = useRef<number | null>(null);
+
   const value: ToastContextValue = {
     predictionSaved: () =>
       toast.success('Prediction saved', { icon: '⚽', style: toastStyle }),
@@ -30,8 +45,15 @@ export function ToastProvider({ children }: { children: ReactNode }) {
       toast.success('Scores updated', { icon: '📊', style: toastStyle }),
     leaderboardChanged: () =>
       toast('Leaderboard changed', { icon: '🏆', style: toastStyle }),
-    caughtCopying: () =>
-      toast('بطل تقليد 👀', { icon: '😏', style: toastStyle, duration: 2500 }),
+    caughtCopying: () => {
+      let index = Math.floor(Math.random() * COPY_CATCH_MESSAGES.length);
+      if (COPY_CATCH_MESSAGES.length > 1 && index === lastIndex.current) {
+        index = (index + 1) % COPY_CATCH_MESSAGES.length;
+      }
+      lastIndex.current = index;
+      const { text, icon } = COPY_CATCH_MESSAGES[index];
+      toast(text, { icon, style: toastStyle, duration: 2500 });
+    },
     error: (message: string) => toast.error(message, { style: toastStyle }),
     info: (message: string) => toast(message, { icon: 'ℹ️', style: toastStyle }),
   };
