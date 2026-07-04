@@ -1,4 +1,4 @@
-import type { Match, Prediction } from '@/types';
+import type { Match, PenaltyWinner, Prediction } from '@/types';
 
 export const POINTS_EXACT = 3;
 export const POINTS_CORRECT_OUTCOME = 1;
@@ -13,12 +13,32 @@ export function getOutcome(home: number, away: number): Outcome {
 }
 
 /**
+ * A knockout match (no `group`) can't officially end in a draw — a tied
+ * scoreline goes to penalties. This resolves the "real" outcome for scoring
+ * purposes: for a tie in a knockout match, the penalty winner (if known)
+ * IS the outcome; otherwise it falls back to the plain score-based outcome
+ * (used for group-stage matches, where a draw is a legitimate final result).
+ */
+export function effectiveOutcome(
+  home: number,
+  away: number,
+  isKnockout: boolean,
+  penaltyWinner: PenaltyWinner | null | undefined
+): Outcome {
+  const scoreOutcome = getOutcome(home, away);
+  if (scoreOutcome === 'draw' && isKnockout && penaltyWinner) {
+    return penaltyWinner;
+  }
+  return scoreOutcome;
+}
+
+/**
  * Scores a single prediction against a finished match.
  * Returns null if the match doesn't have a final score yet.
  */
 export function scorePrediction(
-  prediction: Pick<Prediction, 'predictedHome' | 'predictedAway'>,
-  match: Pick<Match, 'finalHome' | 'finalAway'>
+  prediction: Pick<Prediction, 'predictedHome' | 'predictedAway' | 'predictedPenaltyWinner'>,
+  match: Pick<Match, 'finalHome' | 'finalAway' | 'finalPenaltyWinner' | 'group'>
 ): { points: number; outcome: 'exact' | 'correct' | 'wrong' } | null {
   if (match.finalHome === null || match.finalAway === null) return null;
 
@@ -30,8 +50,14 @@ export function scorePrediction(
     return { points: POINTS_EXACT, outcome: 'exact' };
   }
 
-  const predictedOutcome = getOutcome(prediction.predictedHome, prediction.predictedAway);
-  const actualOutcome = getOutcome(match.finalHome, match.finalAway);
+  const isKnockout = !match.group;
+  const predictedOutcome = effectiveOutcome(
+    prediction.predictedHome,
+    prediction.predictedAway,
+    isKnockout,
+    prediction.predictedPenaltyWinner
+  );
+  const actualOutcome = effectiveOutcome(match.finalHome, match.finalAway, isKnockout, match.finalPenaltyWinner);
 
   if (predictedOutcome === actualOutcome) {
     return { points: POINTS_CORRECT_OUTCOME, outcome: 'correct' };

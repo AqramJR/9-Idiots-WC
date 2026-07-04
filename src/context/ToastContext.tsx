@@ -1,12 +1,13 @@
 import { createContext, useContext, useRef, type ReactNode } from 'react';
 import toast, { Toaster } from 'react-hot-toast';
+import { adjustBonusPoints } from '@/utils/points';
 
 interface ToastContextValue {
   predictionSaved: () => void;
   matchLocked: () => void;
   scoresUpdated: () => void;
   leaderboardChanged: () => void;
-  caughtCopying: () => void;
+  caughtCopying: (userId?: string) => void;
   error: (message: string) => void;
   info: (message: string) => void;
 }
@@ -26,15 +27,51 @@ const toastStyle = {
 // peekers get a fresh roast instead of seeing the same message on loop.
 const COPY_CATCH_MESSAGES: Array<{ text: string; icon: string }> = [
   { text: 'بطل تقليد 👀', icon: '😏' },
-  { text: 'يبني شايفك والله 👁️', icon: '🕵️' },
-  { text: 'ولما اخصم منك 5 نقط دولقتي', icon: '' },
-  { text: 'يبني خلي عندك شخصية 🧠', icon: '🙅' },
-  { text: 'طب تمام متجيش تعيط على الجروب', icon: '' },
-  { text: 'اتمنى تكون اشبعت فضولك', icon: '' },
+  { text: 'شفناك بتتفرج 👁️', icon: '🕵️' },
+  { text: 'استحي، بتقلد كذا مرة؟', icon: '😂' },
+  { text: 'لا لا، فكر بنفسك 🧠', icon: '🙅' },
+  { text: 'التقليد ممنوع يا بطل', icon: '🚫' },
 ];
 
 export function ToastProvider({ children }: { children: ReactNode }) {
   const lastIndex = useRef<number | null>(null);
+  const peekCount = useRef(0);
+
+  const showEscalation = (userId: string) => {
+    toast.custom(
+      (t) => (
+        <div
+          style={toastStyle}
+          className="max-w-xs rounded-xl border px-4 py-3 shadow-glass"
+        >
+          <p className="mb-3 text-sm font-semibold text-chalk-100">انت عايز يتخصم منك 5 بونط 😏</p>
+          <div className="flex justify-end gap-2">
+            <button
+              onClick={async () => {
+                toast.dismiss(t.id);
+                try {
+                  await adjustBonusPoints(userId, -5);
+                  toast('اتخصم منك 5 😂', { icon: '💸', style: toastStyle });
+                } catch (err) {
+                  console.error(err);
+                }
+              }}
+              className="rounded-md border border-red-500/40 bg-red-500/20 px-3 py-1.5 text-xs font-semibold text-red-300 hover:bg-red-500/30"
+            >
+              لو راجل اعملها
+            </button>
+            <button
+              onClick={() => toast.dismiss(t.id)}
+              className="rounded-md border border-white/15 bg-white/5 px-3 py-1.5 text-xs font-semibold text-chalk-200 hover:bg-white/10"
+            >
+              خلاص انا اسف
+            </button>
+          </div>
+        </div>
+      ),
+      { duration: Infinity }
+    );
+  };
 
   const value: ToastContextValue = {
     predictionSaved: () =>
@@ -45,7 +82,15 @@ export function ToastProvider({ children }: { children: ReactNode }) {
       toast.success('Scores updated', { icon: '📊', style: toastStyle }),
     leaderboardChanged: () =>
       toast('Leaderboard changed', { icon: '🏆', style: toastStyle }),
-    caughtCopying: () => {
+    caughtCopying: (userId?: string) => {
+      peekCount.current += 1;
+
+      // Every 3rd time, escalate to a real yes/no threat instead of a one-liner.
+      if (userId && peekCount.current % 3 === 0) {
+        showEscalation(userId);
+        return;
+      }
+
       let index = Math.floor(Math.random() * COPY_CATCH_MESSAGES.length);
       if (COPY_CATCH_MESSAGES.length > 1 && index === lastIndex.current) {
         index = (index + 1) % COPY_CATCH_MESSAGES.length;

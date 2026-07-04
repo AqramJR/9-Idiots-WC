@@ -29,6 +29,7 @@ const POINTS_CORRECT = 1;
 const POINTS_WRONG = 0;
 
 type Outcome = 'home' | 'away' | 'draw';
+type PenaltyWinner = 'home' | 'away';
 
 function getOutcome(home: number, away: number): Outcome {
   if (home > away) return 'home';
@@ -36,9 +37,26 @@ function getOutcome(home: number, away: number): Outcome {
   return 'draw';
 }
 
+// A knockout match (no `group`) can't officially end in a draw — ties go to
+// penalties. This resolves the "real" outcome for scoring: for a tied
+// knockout match, the penalty winner IS the outcome; group-stage draws are
+// left as legitimate draws.
+function effectiveOutcome(
+  home: number,
+  away: number,
+  isKnockout: boolean,
+  penaltyWinner: PenaltyWinner | null | undefined
+): Outcome {
+  const scoreOutcome = getOutcome(home, away);
+  if (scoreOutcome === 'draw' && isKnockout && penaltyWinner) return penaltyWinner;
+  return scoreOutcome;
+}
+
 interface MatchDoc {
   finalHome: number | null;
   finalAway: number | null;
+  finalPenaltyWinner?: PenaltyWinner | null;
+  group?: string | null;
 }
 
 interface PredictionDoc {
@@ -46,20 +64,22 @@ interface PredictionDoc {
   matchId: string;
   predictedHome: number;
   predictedAway: number;
+  predictedPenaltyWinner?: PenaltyWinner | null;
   points: number | null;
   outcome: 'exact' | 'correct' | 'wrong' | null;
 }
 
 function scorePrediction(
-  p: Pick<PredictionDoc, 'predictedHome' | 'predictedAway'>,
+  p: Pick<PredictionDoc, 'predictedHome' | 'predictedAway' | 'predictedPenaltyWinner'>,
   m: MatchDoc
 ): { points: number; outcome: 'exact' | 'correct' | 'wrong' } | null {
   if (m.finalHome === null || m.finalAway === null) return null;
   if (p.predictedHome === m.finalHome && p.predictedAway === m.finalAway) {
     return { points: POINTS_EXACT, outcome: 'exact' };
   }
-  const predicted = getOutcome(p.predictedHome, p.predictedAway);
-  const actual = getOutcome(m.finalHome, m.finalAway);
+  const isKnockout = !m.group;
+  const predicted = effectiveOutcome(p.predictedHome, p.predictedAway, isKnockout, p.predictedPenaltyWinner);
+  const actual = effectiveOutcome(m.finalHome, m.finalAway, isKnockout, m.finalPenaltyWinner);
   return predicted === actual
     ? { points: POINTS_CORRECT, outcome: 'correct' }
     : { points: POINTS_WRONG, outcome: 'wrong' };

@@ -43,8 +43,8 @@ interface ApiMatch {
   status: 'SCHEDULED' | 'TIMED' | 'IN_PLAY' | 'PAUSED' | 'FINISHED' | 'POSTPONED' | 'SUSPENDED' | 'CANCELLED' | 'AWARDED';
   stage: string; // "GROUP_STAGE", "LAST_16", "QUARTER_FINALS", "SEMI_FINALS", "THIRD_PLACE", "FINAL", ...
   group: string | null; // "GROUP_A" or null for knockout rounds
-  homeTeam: ApiTeam;
-  awayTeam: ApiTeam;
+  homeTeam: ApiTeam | null;
+  awayTeam: ApiTeam | null;
   score: {
     fullTime: { home: number | null; away: number | null };
   };
@@ -141,12 +141,23 @@ function groupLabel(group: string | null): string | undefined {
   return `Group ${letter}`;
 }
 
-// Only real, confirmed teams have a positive numeric id and a name in the
-// football-data.org response — placeholder knockout slots aren't returned
-// as matches at all by this API (unlike some static datasets), but we guard
-// anyway in case a team object comes back incomplete.
-function isRealTeam(team: ApiTeam): boolean {
+// Real, confirmed teams have a positive numeric id and a name. Knockout
+// slots not yet determined (e.g. "Winner Match 74") come back with an
+// incomplete/null team object from football-data.org. We used to SKIP those
+// entirely, which silently hid every not-yet-determined knockout fixture —
+// now we include them as "TBD" placeholders instead, so the match (and its
+// real kickoff time) shows up immediately, and a later re-run of this script
+// fills in the real team names the moment football-data.org resolves them.
+function isRealTeam(team: ApiTeam | null | undefined): boolean {
   return !!team && typeof team.id === 'number' && !!team.name;
+}
+
+function teamName(team: ApiTeam | null | undefined): string {
+  return isRealTeam(team) ? team!.name : 'TBD';
+}
+
+function teamFlag(team: ApiTeam | null | undefined): string {
+  return isRealTeam(team) ? flagUrl(team!.name) : '🏳️';
 }
 
 async function main() {
@@ -200,8 +211,23 @@ async function main() {
 
   const data = (await res.json()) as { matches: ApiMatch[] };
 
+  // Diagnostic: show exactly what the API actually returned, broken down by
+  // stage, BEFORE any filtering — this tells us definitively whether missing
+  // knockout matches are a football-data.org data-availability thing (they
+  // simply haven't published that fixture yet) or something else.
+  const rawStageCounts: Record<string, number> = {};
+  for (const m of data.matches) {
+    const label = groupLabel(m.group) ? 'Group Stage' : stageLabel(m.stage);
+    rawStageCounts[label] = (rawStageCounts[label] ?? 0) + 1;
+  }
+  console.log(`\nAPI returned ${data.matches.length} total matches:`);
+  for (const [stage, count] of Object.entries(rawStageCounts)) {
+    console.log(`   ${stage}: ${count}`);
+  }
+
   let imported = 0;
-  let skipped = 0;
+  let tbd = 0;
+  const writtenStageCounts: Record<string, number> = {};
 
   const batchSize = 400;
   let batch = db.batch();
@@ -209,11 +235,6 @@ async function main() {
   const commits: Promise<FirebaseFirestore.WriteResult[]>[] = [];
 
   for (const m of data.matches) {
-    if (!isRealTeam(m.homeTeam) || !isRealTeam(m.awayTeam)) {
-      skipped += 1;
-      continue;
-    }
-
     const kickoff = new Date(m.utcDate).getTime();
     const finalHome = m.score.fullTime.home;
     const finalAway = m.score.fullTime.away;
@@ -221,18 +242,22 @@ async function main() {
       finalHome !== null && finalAway !== null && (m.status === 'FINISHED' || m.status === 'AWARDED')
         ? 'finished'
         : 'scheduled';
+    const isTbd = !isRealTeam(m.homeTeam) || !isRealTeam(m.awayTeam);
+    if (isTbd) tbd += 1;
 
     const docId = `wc26-${m.id}`;
+    const stage = groupLabel(m.group) ? 'Group Stage' : stageLabel(m.stage);
+    writtenStageCounts[stage] = (writtenStageCounts[stage] ?? 0) + 1;
 
     batch.set(
       db.collection('matches').doc(docId),
       {
-        homeTeam: m.homeTeam.name,
-        awayTeam: m.awayTeam.name,
-        homeFlag: flagUrl(m.homeTeam.name),
-        awayFlag: flagUrl(m.awayTeam.name),
+        homeTeam: teamName(m.homeTeam),
+        awayTeam: teamName(m.awayTeam),
+        homeFlag: teamFlag(m.homeTeam),
+        awayFlag: teamFlag(m.awayTeam),
         group: groupLabel(m.group) ?? null,
-        stage: groupLabel(m.group) ? 'Group Stage' : stageLabel(m.stage),
+        stage,
         kickoff,
         finalHome,
         finalAway,
@@ -253,10 +278,11 @@ async function main() {
   commits.push(batch.commit());
   await Promise.all(commits);
 
-  console.log(
-    `\n✅ Imported/updated ${imported} matches${skipped ? ` (${skipped} skipped — incomplete team data)` : ''}.`
-  );
-  console.log('   Run this script again any time to sync new results and knockout-stage matchups.');
+  console.log(`\n✅ Imported/updated ${imported} matches (${tbd} still TBD, waiting on football-data.org to confirm teams):`);
+  for (const [stage, count] of Object.entries(writtenStageCounts)) {
+    console.log(`   ${stage}: ${count}`);
+  }
+  console.log('\n   Run this script again any time to sync new results and fill in TBD teams as they\u2019re confirmed.');
   process.exit(0);
 }
 

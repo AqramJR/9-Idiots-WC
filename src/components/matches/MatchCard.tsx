@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import type { Match, Prediction, User } from '@/types';
-import { formatKickoff, formatCountdown, isLocked, msUntil } from '@/utils/dateHelpers';
+import type { Match, PenaltyWinner, Prediction, User } from '@/types';
+import { formatKickoff, formatCountdown, isLocked, isPredictionWindowOpen, msUntil, PREDICTION_WINDOW_MS } from '@/utils/dateHelpers';
 import { useAppToast } from '@/context/ToastContext';
 import { Flag } from '@/components/common/Flag';
 import { usePredictionsForMatch } from '@/hooks/usePredictionsForMatch';
@@ -8,22 +8,32 @@ import { usePredictionsForMatch } from '@/hooks/usePredictionsForMatch';
 interface MatchCardProps {
   match: Match;
   prediction: Prediction | undefined;
-  onSave: (home: number, away: number) => Promise<void>;
+  onSave: (home: number, away: number, penaltyWinner?: PenaltyWinner | null) => Promise<void>;
   usersMap: Record<string, User>;
   currentUserId?: string;
 }
 
 export function MatchCard({ match, prediction, onSave, usersMap, currentUserId }: MatchCardProps) {
-  const [home, setHome] = useState<string>(prediction ? String(prediction.predictedHome) : '');
-  const [away, setAway] = useState<string>(prediction ? String(prediction.predictedAway) : '');
+  const isKnockout = !match.group;
+  const [home, setHome] = useState<string>(prediction ? String(prediction.predictedHome) : '0');
+  const [away, setAway] = useState<string>(prediction ? String(prediction.predictedAway) : '0');
+  const [penaltyWinner, setPenaltyWinner] = useState<PenaltyWinner | null>(
+    prediction?.predictedPenaltyWinner ?? null
+  );
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [locked, setLocked] = useState(isLocked(match.kickoff));
+  const [windowOpen, setWindowOpen] = useState(isPredictionWindowOpen(match.kickoff));
   const [countdown, setCountdown] = useState(formatCountdown(msUntil(match.kickoff)));
   const [showPredictions, setShowPredictions] = useState(false);
   const [viewedOthers, setViewedOthers] = useState(false);
   const [warnedThisView, setWarnedThisView] = useState(false);
   const toast = useAppToast();
+
+  const notYetOpen = !locked && !windowOpen;
+  const canEdit = !locked && windowOpen;
+  const isTied = home !== '' && away !== '' && home === away;
+  const needsPenaltyPick = isKnockout && isTied;
 
   // You unlock everyone else's picks the moment you've submitted your own —
   // no waiting for kickoff. Keeps things friendly and fast-paced.
@@ -35,18 +45,28 @@ export function MatchCard({ match, prediction, onSave, usersMap, currentUserId }
     if (!dirty && prediction) {
       setHome(String(prediction.predictedHome));
       setAway(String(prediction.predictedAway));
+      setPenaltyWinner(prediction.predictedPenaltyWinner ?? null);
     }
   }, [prediction, dirty]);
 
-  // Live countdown + auto-lock the instant kickoff passes.
+  // Clear a stale penalty pick the moment the scoreline stops being tied.
+  useEffect(() => {
+    if (!needsPenaltyPick) setPenaltyWinner(null);
+  }, [needsPenaltyPick]);
+
+  // Live countdown + auto-lock the instant kickoff passes, and auto-open the
+  // instant we enter the 20-hour prediction window before kickoff.
   useEffect(() => {
     const tick = () => {
       const nowLocked = isLocked(match.kickoff);
-      setCountdown(formatCountdown(msUntil(match.kickoff)));
+      const nowOpen = isPredictionWindowOpen(match.kickoff);
+      const opensAt = match.kickoff - PREDICTION_WINDOW_MS;
+      setCountdown(nowOpen || nowLocked ? formatCountdown(msUntil(match.kickoff)) : formatCountdown(msUntil(opensAt)));
       setLocked((prev) => {
         if (!prev && nowLocked) toast.matchLocked();
         return nowLocked;
       });
+      setWindowOpen(nowOpen);
     };
     tick();
     const id = setInterval(tick, 15000);
@@ -67,8 +87,8 @@ export function MatchCard({ match, prediction, onSave, usersMap, currentUserId }
   };
 
   const handleScoreChange = (setter: (v: string) => void) => (v: string) => {
-    if (!locked && viewedOthers && !warnedThisView) {
-      toast.caughtCopying();
+    if (canEdit && viewedOthers && !warnedThisView) {
+      toast.caughtCopying(currentUserId);
       setWarnedThisView(true);
     }
     setter(v);
@@ -76,16 +96,20 @@ export function MatchCard({ match, prediction, onSave, usersMap, currentUserId }
   };
 
   const handleSave = async () => {
-    if (locked) return;
+    if (!canEdit) return;
     const h = Number(home);
     const a = Number(away);
     if (home === '' || away === '' || Number.isNaN(h) || Number.isNaN(a) || h < 0 || a < 0) {
       toast.error('Enter a valid score for both teams');
       return;
     }
+    if (needsPenaltyPick && !penaltyWinner) {
+      toast.error('It\u2019s a draw — pick who wins on penalties');
+      return;
+    }
     setSaving(true);
     try {
-      await onSave(h, a);
+      await onSave(h, a, needsPenaltyPick ? penaltyWinner : null);
       setDirty(false);
       toast.predictionSaved();
     } catch (err) {
@@ -96,9 +120,9 @@ export function MatchCard({ match, prediction, onSave, usersMap, currentUserId }
     }
   };
 
-  const hasChanges =
-    dirty &&
-    !(prediction && String(prediction.predictedHome) === home && String(prediction.predictedAway) === away);
+  const hasChanges = !prediction
+    ? true // first-ever submission for this match — always allow saving, even if left at the default 0-0
+    : dirty && !(String(prediction.predictedHome) === home && String(prediction.predictedAway) === away);
 
   const isFinished = match.status === 'finished' && match.finalHome !== null && match.finalAway !== null;
 
@@ -111,8 +135,12 @@ export function MatchCard({ match, prediction, onSave, usersMap, currentUserId }
         <div className="flex items-center gap-2">
           <span className="text-chalk-500">{formatKickoff(match.kickoff)}</span>
           {!locked && (
-            <span className="rounded-full bg-turf-500/15 px-2 py-0.5 font-mono text-turf-400">
-              ⏱ {countdown}
+            <span
+              className={`rounded-full px-2 py-0.5 font-mono ${
+                notYetOpen ? 'bg-white/5 text-chalk-500' : 'bg-turf-500/15 text-turf-400'
+              }`}
+            >
+              {notYetOpen ? `🕓 opens in ${countdown}` : `⏱ ${countdown}`}
             </span>
           )}
         </div>
@@ -130,9 +158,9 @@ export function MatchCard({ match, prediction, onSave, usersMap, currentUserId }
             </div>
           ) : (
             <>
-              <ScoreInput value={home} disabled={locked} onChange={handleScoreChange(setHome)} />
+              <ScoreInput value={home} disabled={!canEdit} onChange={handleScoreChange(setHome)} />
               <span className="text-chalk-500">–</span>
-              <ScoreInput value={away} disabled={locked} onChange={handleScoreChange(setAway)} />
+              <ScoreInput value={away} disabled={!canEdit} onChange={handleScoreChange(setAway)} />
             </>
           )}
         </div>
@@ -140,10 +168,52 @@ export function MatchCard({ match, prediction, onSave, usersMap, currentUserId }
         <TeamBlock flag={match.awayFlag} name={match.awayTeam} align="left" />
       </div>
 
+      {canEdit && needsPenaltyPick && (
+        <div className="mt-3 rounded-lg border border-gold-500/30 bg-gold-500/10 p-3">
+          <p className="mb-2 text-center text-xs font-semibold text-gold-400">
+            It's a draw — who wins on penalties? 🥅
+          </p>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setPenaltyWinner('home');
+                setDirty(true);
+              }}
+              className={`flex-1 rounded-lg border px-3 py-2 text-sm font-semibold transition-colors ${
+                penaltyWinner === 'home'
+                  ? 'border-turf-400 bg-turf-500/20 text-turf-300'
+                  : 'border-white/10 bg-white/5 text-chalk-300 hover:border-white/20'
+              }`}
+            >
+              {match.homeTeam}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setPenaltyWinner('away');
+                setDirty(true);
+              }}
+              className={`flex-1 rounded-lg border px-3 py-2 text-sm font-semibold transition-colors ${
+                penaltyWinner === 'away'
+                  ? 'border-turf-400 bg-turf-500/20 text-turf-300'
+                  : 'border-white/10 bg-white/5 text-chalk-300 hover:border-white/20'
+              }`}
+            >
+              {match.awayTeam}
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="mt-4 flex items-center justify-between">
         {locked ? (
           <span className="flex items-center gap-1.5 text-sm font-medium text-chalk-500">
             🔒 Predictions closed
+          </span>
+        ) : notYetOpen ? (
+          <span className="flex items-center gap-1.5 text-sm font-medium text-chalk-500">
+            🕓 Predictions open 20h before kickoff
           </span>
         ) : (
           <span className="text-sm text-chalk-500">
@@ -151,7 +221,7 @@ export function MatchCard({ match, prediction, onSave, usersMap, currentUserId }
           </span>
         )}
 
-        {!locked && !isFinished && (
+        {canEdit && !isFinished && (
           <button
             onClick={handleSave}
             disabled={saving || !hasChanges}

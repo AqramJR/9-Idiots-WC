@@ -2,17 +2,18 @@
 
 Predict every match, talk trash, and see who's the biggest idiot on the leaderboard by the end of the tournament.
 
-Built with **React + TypeScript + Tailwind CSS**, **Firebase** (Anonymous Auth + Firestore + Hosting).
+Built with **React + TypeScript + Tailwind CSS**, **Firebase** (Email/Password Auth + Firestore + Hosting).
 
 ---
 
 ## Features
 
-- **No sign-up friction** — friends just type their name (+ optional emoji avatar) and start predicting. Backed by Firebase Anonymous Auth.
+- **Username + password login, works on any device** — no anonymous browser sessions to lose. "Keep me logged in" persists your session; log in with the same username/password from any phone or computer and your score comes with you.
 - **Live match predictions** — score inputs autosave to Firestore, and lock automatically the instant kickoff passes. Submit your pick and everyone else's picks for that match unlock immediately — try to sneak an edit after peeking and you'll get called out with a "بطل تقليد" toast first.
 - **Automatic live sync** — a free GitHub Actions workflow re-imports real results and recalculates the leaderboard every 15 minutes, with no manual steps (see "Automatic live sync" below).
 - **Live leaderboard** — ranked by points → exact predictions → correct outcomes, top 3 get medals 🥇🥈🥉. Scoring rules are shown right on the leaderboard page.
-- **Admin dashboard** — protected page with two tabs: **Matches** (create/edit/delete matches, enter final scores, recalculate standings, reset all data) and **Players** (edit anyone's points/exact/correct totals directly, or remove a player and their predictions entirely).
+- **Admin dashboard** — protected page with two tabs: **Matches** (create/edit/delete matches, enter final scores, recalculate standings, reset all data, and **edit any player's prediction for that match — even after kickoff**, via the "Edit predictions" toggle on each match) and **Players** (adjust anyone's Points/Exact/Correct/Total-predictions via persistent Bonus fields, **view or edit any single player's predictions across every match** via "View predictions" on their row, or remove a player and their predictions entirely).
+- **Players can edit their own name and avatar** any time from the Profile page ("Edit name / avatar").
 - **Real team flags** — the `Flag` component renders either emoji flags or real flag image URLs (flagcdn.com) automatically, so flags look right on every OS/browser — including Windows, which doesn't render flag emoji.
 - **Scoring** — exact score = **+3**, correct winner/draw = **+1**, wrong = **0**.
 - **Profile page** — your picks, points, rank, and accuracy %.
@@ -56,7 +57,7 @@ Built with **React + TypeScript + Tailwind CSS**, **Firebase** (Anonymous Auth +
 │   │   ├── profile/              # ProfilePage
 │   │   └── stats/                # StatsPage
 │   ├── context/
-│   │   ├── AuthContext.tsx      # anonymous auth, identity, admin sign-in
+│   │   ├── AuthContext.tsx      # username/password auth, derived identity, admin status
 │   │   └── ToastContext.tsx     # notification helpers
 │   ├── firebase/
 │   │   └── config.ts            # Firebase app initialization
@@ -150,19 +151,46 @@ Implemented in `src/utils/scoring.ts`:
 
 The admin's **"Recalculate standings"** button (`src/utils/recalculate.ts`) re-scores every prediction against final results and rewrites each user's `points`, `exactPredictions`, `correctOutcomes`, `wrongPredictions`, and `totalPredictions` in batched Firestore writes.
 
+### `points` vs `bonusPoints`
+
+Each user has two separate point fields:
+
+- **`points`** — 100% auto-computed from scored predictions. Every recalculation (manual or the automatic GitHub Actions sync) **overwrites** this from scratch.
+- **`bonusPoints`** — manual adjustments only. Recalculation **never touches this field**, so it persists forever. This is where:
+  - Admin Dashboard → Players → **Bonus** field writes to (a straight `set`, via `setBonusPoints` in `src/utils/points.ts`).
+  - The "caught copying" troll penalty (see below) writes to, via an atomic `increment(-5)` (`adjustBonusPoints`).
+
+The leaderboard, profile page, and everywhere points are displayed always show **`points + bonusPoints`** (`LeaderboardEntry.totalPoints`) — never raw `points` alone. This is what fixed the earlier bug where admin-set points got wiped out the next time a match finished and standings recalculated.
+
+### The "بطل تقليد" troll mechanic
+
+Once you've submitted a prediction for a match, you can expand **"See everyone's predictions"** on that card. If you peek and then go edit your own pick before kickoff, you get a random roast toast (`caughtCopying` in `src/context/ToastContext.tsx` — edit the `COPY_CATCH_MESSAGES` array to add/change lines). Every 3rd time this happens (tracked in-memory per browser session), it escalates to a yes/no dialog offering a real **-5 bonus point** penalty if they own up to it — implemented with `toast.custom()` so it can render actual buttons, wired to `adjustBonusPoints(userId, -5)`.
+
 ---
 
 ## Security Model
 
-- **Anonymous Auth** for players — one tap, no password. Their `userId` (Firebase Auth UID) is what predictions and the user profile doc are keyed on.
-- **Admin** is a *separate*, dedicated Firebase Auth **email/password** account (create it once in the console). Firestore rules identify the admin by checking `request.auth.token.firebase.sign_in_provider == 'password'` — since regular players only ever use anonymous auth, anyone who successfully signs in with email/password is the admin.
+- **Every player** signs in with a **username + password** (Firebase Auth email/password under the hood — usernames are converted to a fake internal email like `ahmed99@9idiotswc.local` so no real email address is ever required). This is what lets someone log into the same account from any device and keep their score, instead of the old anonymous-per-browser session that could reset.
+- **"Keep me logged in"** toggles Firebase Auth persistence between `browserLocalPersistence` (stays logged in across visits/restarts — default) and `browserSessionPersistence` (logged out when the tab closes).
+- **Admin access** is a property of a normal account, not a separate login. Whoever's UID exists as a document in the `admins` Firestore collection sees the Admin Dashboard when they visit `/admin` — everyone else sees "Not an admin." This has to be set up **manually, once, via Firebase Console** (see setup steps below) since there's no UI for it by design.
 - **Firestore rules** (`firestore.rules`) enforce:
   - A user can create/update only **their own** `users/{uid}` doc.
-  - A user can create/update only **their own** predictions, and only while `matches/{matchId}.kickoff` is still in the future (server-side check, not just UI).
-  - Only the admin can write to `matches/*`, delete users, or edit prediction scoring fields.
-- ⚠️ **Note on the admin dashboard "password gate":** the login form itself is just a normal Firebase email/password sign-in — there's no separate insecure client-side password check guarding real data. The actual enforcement always happens in `firestore.rules`, not in the UI.
+  - A user can create/update only **their own** predictions, and only while the match is still within its open prediction window (server-side check, not just UI).
+  - Only an admin (per the `admins` collection check above) can write to `matches/*`, delete users, or edit prediction scoring fields.
+  - The `admins` collection itself can only be **read** by a user checking their own UID — never listed, never written to from the client.
 
 ---
+
+## Migrating existing players from the old anonymous-login version
+
+If your friends already used this app before it switched to username/password login, **their old scores won't automatically carry over** — their old profile is tied to an anonymous browser session (a Firebase UID with no password behind it), which is exactly the bug this update fixes, but it does mean a one-time manual cleanup:
+
+1. Have each friend **sign up fresh** with a username + password (their old display name works fine as the new username too).
+2. Note what their **old total points / exact / correct / predictions count** were (check the leaderboard or your own notes before they re-signed up).
+3. In **Admin Dashboard → Players**, find their *new* account and set the **Bonus** fields (Points, Exact, Correct, Predictions) to match their old totals. Since `bonusPoints` etc. are never touched by recalculation, this permanently restores their standing.
+4. Once confirmed, delete their old orphaned anonymous account via **Remove** in the Players tab (it'll still be sitting there under the same display name, taking up a leaderboard row with 0 new activity).
+
+Their old individual match predictions won't transfer (they're tied to the old anonymous UID), but their overall standing does via the Bonus fields above — reasonable for a friends game where the leaderboard total is what actually matters.
 
 ## Getting Started
 
@@ -180,9 +208,7 @@ npm install
 ### 3. Create your Firebase project
 
 1. Go to the [Firebase Console](https://console.firebase.google.com/) → **Add project**.
-2. Enable **Authentication**:
-   - Sign-in method → enable **Anonymous**.
-   - Sign-in method → enable **Email/Password**, then go to the **Users** tab and manually add one admin user (e.g. `admin@yourdomain.com` + a strong password). This is your admin login.
+2. Enable **Authentication** → Sign-in method → enable **Email/Password**. (That's the only provider needed — usernames are converted to internal fake emails under the hood, so players never see or need a real email address. You do **not** need to enable Anonymous.)
 3. Enable **Cloud Firestore** (start in production mode — the rules in this repo cover access control).
 4. Go to **Project Settings → General → Your apps → Add app → Web**, and copy the config values.
 
@@ -192,7 +218,7 @@ npm install
 cp .env.example .env
 ```
 
-Fill in `.env` with your Firebase config values and the admin email you created:
+Fill in `.env` with your Firebase config values:
 
 ```
 VITE_FIREBASE_API_KEY=...
@@ -201,7 +227,6 @@ VITE_FIREBASE_PROJECT_ID=...
 VITE_FIREBASE_STORAGE_BUCKET=...
 VITE_FIREBASE_MESSAGING_SENDER_ID=...
 VITE_FIREBASE_APP_ID=...
-VITE_ADMIN_EMAIL=admin@yourdomain.com
 ```
 
 ### 5. Deploy Firestore rules & indexes
@@ -213,7 +238,16 @@ firebase use --add              # pick your project, alias it "default"
 firebase deploy --only firestore:rules,firestore:indexes
 ```
 
-### 6. Get a Firebase service account key + a football-data.org API key (needed for the importer)
+### 6. Make yourself (or someone) an admin
+
+There's no signup flow for this by design — it's a manual, one-time step so a random player can never grant themselves admin access:
+
+1. Run the app (or use the deployed site) and **sign up normally** with a username/password — same as any other player.
+2. Firebase Console → **Authentication → Users**, find that account, and copy its **User UID**.
+3. Firebase Console → **Firestore Database → Start collection** (or add to an existing one) → collection ID **`admins`** → **document ID = the UID you just copied** → any single field (e.g. `role: "admin"`) is enough, the content doesn't matter, only the document's existence and ID.
+4. That account now sees the Admin Dashboard at `/admin`. Repeat for any other admins.
+
+### 7. Get a Firebase service account key + a football-data.org API key (needed for the importer)
 
 Both scripts below use `firebase-admin`, which bypasses Firestore security rules — perfect for one-time/admin-style data loading.
 
@@ -224,7 +258,7 @@ Both scripts below use `firebase-admin`, which bypasses Firestore security rules
    FOOTBALL_DATA_API_KEY=your-key-here
    ```
 
-### 7. Import real World Cup 2026 matches (recommended) — or seed sample data
+### 8. Import real World Cup 2026 matches (recommended) — or seed sample data
 
 The **2026 FIFA World Cup is happening right now** (June 11 – July 19, 2026). Pull the real schedule and results directly into Firestore from [football-data.org](https://www.football-data.org/) — a well-established football data API (running since 2013) whose free tier includes the World Cup.
 
@@ -236,7 +270,8 @@ This upserts every match — real team names, kickoff times (converted from UTC)
 
 - Already-played matches get their final scores filled in / corrected.
 - Upcoming matches stay as-is until they're played.
-- Knockout-stage matches only appear once football-data.org has confirmed the actual teams in that slot — re-run the script periodically as the bracket fills in. Matches are upserted by a stable match ID, so nothing gets duplicated.
+- Knockout-stage matches show up immediately as **"TBD vs TBD"** placeholders (with their real scheduled kickoff time) as soon as football-data.org creates the fixture slot — even before the two teams are determined. Re-run the script periodically and team names fill in automatically as the bracket resolves. Matches are upserted by a stable match ID, so nothing gets duplicated.
+- The script prints a breakdown of matches found by stage (Group Stage, Round of 32, etc.) both from the raw API response and after writing to Firestore — handy for confirming whether football-data.org has published a given round yet.
 
 > Team crest images are used as each team's flag — the UI (`Flag` component) renders both emoji strings and image URLs automatically, so this works seamlessly alongside manually-created matches that use emoji flags.
 >
@@ -252,7 +287,7 @@ This creates 10 sample matches (mix of finished, locked/live, and upcoming) with
 
 You can also always just use the **Admin Dashboard** in the running app to create/edit matches by hand — any approach works alongside the others.
 
-### 8. Run locally
+### 9. Run locally
 
 ```bash
 npm run dev
@@ -316,7 +351,7 @@ This uses **GitHub's free scheduled-workflow minutes** — no Firebase billing u
 
 ## How the match lock works
 
-Each `MatchCard` compares `Date.now()` to `match.kickoff` on a 15-second interval and disables its inputs the instant kickoff passes, showing **"Predictions closed."** This is a UX convenience — the same rule is **enforced server-side** in `firestore.rules`, so a predicted score can never be written or edited after kickoff even if someone tampers with the client.
+Predictions have a **window**, not just a lock: they only open once a match is within **20 hours** of kickoff (`PREDICTION_WINDOW_MS` in `src/utils/dateHelpers.ts`), and close the instant kickoff passes. Outside that window a card shows "🕓 Predictions open 20h before kickoff" with disabled inputs; inside it, normal editable predictions; after kickoff, "🔒 Predictions closed." This is a UX convenience — the same 20-hour window and kickoff cutoff are **enforced server-side** in `firestore.rules` (`isPredictionWindowOpen()`), so a predicted score can never be written or edited outside that window even if someone tampers with the client. The **Matches → Open** tab only shows matches currently inside this window — matches further out simply won't appear until they enter it, keeping the tab focused on what's actually actionable right now.
 
 The moment you submit your own prediction for a match, **"See everyone's predictions"** unlocks on that card — no waiting for kickoff. If you peek at everyone else's picks and then go change your own before kickoff, you'll get called out with a playful "بطل تقليد" toast first — it doesn't block the edit, it just roasts you a little before letting you through.
 
@@ -353,7 +388,7 @@ Team flags are rendered as real flag *images* (via [flagcdn.com](https://flagcdn
 - Add knockout-stage bonus multipliers (e.g. Final worth 2x points).
 - Add push notifications 15 minutes before kickoff.
 - Add group-stage standings prediction, not just match-by-match.
-- Swap the admin's single email/password account for Firebase custom claims + Cloud Functions if you want multiple admins.
+- Multiple admins already work out of the box — just add another UID to the `admins` collection. No extra setup needed.
 
 ---
 

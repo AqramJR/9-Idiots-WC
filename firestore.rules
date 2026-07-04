@@ -3,15 +3,38 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Admin = signed in with email/password (regular players use anonymous auth).
-    // Create exactly one admin account in Firebase Auth for this to work.
+    // Admin = your Firebase Auth UID has a document in the `admins` collection.
+    // This is registered manually, once, via Firebase Console (Firestore ->
+    // admins collection -> add a document whose ID is the admin's UID, found
+    // in Authentication -> Users). It intentionally can't be set through the
+    // app itself. NOTE: this can no longer be "signed in with password" —
+    // every player now signs in with password too (the username/password
+    // system), so that check would grant every player admin access.
     function isAdmin() {
       return request.auth != null &&
-        request.auth.token.firebase.sign_in_provider == 'password';
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid));
     }
 
     function isSignedIn() {
       return request.auth != null;
+    }
+
+    // Predictions are only allowed once kickoff is within 20 hours — mirrors
+    // isPredictionWindowOpen() in src/utils/dateHelpers.ts on the client.
+    function isPredictionWindowOpen(matchId) {
+      let kickoff = get(/databases/$(database)/documents/matches/$(matchId)).data.kickoff;
+      return kickoff > request.time.toMillis()
+        && kickoff - request.time.toMillis() <= 72000000; // 20 hours in ms
+    }
+
+    // ---------- admins ----------
+    // Managed entirely via Firebase Console, never through the app. A user
+    // may only check whether THEY THEMSELVES are an admin (their own doc) —
+    // never list the collection or write to it.
+    match /admins/{uid} {
+      allow get: if request.auth != null && request.auth.uid == uid;
+      allow list: if false;
+      allow write: if false;
     }
 
     // ---------- users ----------
@@ -36,27 +59,28 @@ service cloud.firestore {
     }
 
     // ---------- predictions ----------
-    // A user can only read/write their own predictions, and only before kickoff.
-    // Admin can read all predictions (for stats/recalculation) but never edits them.
+    // A user can only create/edit their own predictions, and only within the
+    // prediction window (see isPredictionWindowOpen above). Admin can
+    // create/edit ANY prediction, for any player, at any time — e.g. to
+    // enter an existing player's pick on their behalf.
     match /predictions/{predictionId} {
       allow read: if true;
 
-      allow create: if isSignedIn()
-        && request.resource.data.userId == request.auth.uid
-        && request.resource.data.predictedHome is int
-        && request.resource.data.predictedAway is int
-        && request.resource.data.predictedHome >= 0
-        && request.resource.data.predictedAway >= 0
-        && get(/databases/$(database)/documents/matches/$(request.resource.data.matchId)).data.kickoff > request.time.toMillis();
+      allow create: if isAdmin()
+        || (isSignedIn()
+          && request.resource.data.userId == request.auth.uid
+          && request.resource.data.predictedHome is int
+          && request.resource.data.predictedAway is int
+          && request.resource.data.predictedHome >= 0
+          && request.resource.data.predictedAway >= 0
+          && isPredictionWindowOpen(request.resource.data.matchId));
 
-      allow update: if isSignedIn()
-        && resource.data.userId == request.auth.uid
-        && request.resource.data.userId == request.auth.uid
-        && request.resource.data.matchId == resource.data.matchId
-        && get(/databases/$(database)/documents/matches/$(resource.data.matchId)).data.kickoff > request.time.toMillis();
-
-      // Scoring fields (points/outcome) are written by the admin recalculation flow only.
-      allow update: if isAdmin();
+      allow update: if isAdmin()
+        || (isSignedIn()
+          && resource.data.userId == request.auth.uid
+          && request.resource.data.userId == request.auth.uid
+          && request.resource.data.matchId == resource.data.matchId
+          && isPredictionWindowOpen(resource.data.matchId));
 
       allow delete: if isAdmin();
     }

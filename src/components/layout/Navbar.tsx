@@ -10,13 +10,13 @@ const links = [
 ];
 
 export function Navbar() {
-  const { identity, logout } = useAuth();
+  const { identity, logOut } = useAuth();
   const [open, setOpen] = useState(false);
   const navigate = useNavigate();
 
-  const handleLogout = () => {
-    logout();
+  const handleLogout = async () => {
     setOpen(false);
+    await logOut();
     navigate('/');
   };
 
@@ -53,7 +53,7 @@ export function Navbar() {
           )}
           {identity && (
             <button onClick={handleLogout} className="text-xs text-chalk-500 hover:text-chalk-300">
-              Switch user
+              Log out
             </button>
           )}
         </div>
@@ -92,7 +92,7 @@ export function Navbar() {
             ))}
             {identity && (
               <button onClick={handleLogout} className="mt-2 rounded-lg px-3 py-2.5 text-left text-sm text-chalk-500">
-                Switch user
+                Log out
               </button>
             )}
           </div>

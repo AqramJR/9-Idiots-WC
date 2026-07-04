@@ -1,29 +1,39 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useMatches } from '@/hooks/useMatches';
 import { usePredictions } from '@/hooks/usePredictions';
 import { useLeaderboard } from '@/hooks/useLeaderboard';
+import { useAppToast } from '@/context/ToastContext';
 import { accuracyPercentage } from '@/utils/scoring';
 import { formatKickoff } from '@/utils/dateHelpers';
+import { AVATARS } from '@/utils/avatars';
 import { EmptyState } from '@/components/common/EmptyState';
 import { Flag } from '@/components/common/Flag';
 import { useNavigate } from 'react-router-dom';
 
 export function ProfilePage() {
-  const { identity, profile } = useAuth();
+  const { identity, profile, updateProfile } = useAuth();
   const { matches } = useMatches();
   const { predictions } = usePredictions(identity?.userId);
   const { leaderboard } = useLeaderboard(false);
+  const toast = useAppToast();
   const navigate = useNavigate();
+
+  const [editing, setEditing] = useState(false);
+  const [nameDraft, setNameDraft] = useState('');
+  const [avatarDraft, setAvatarDraft] = useState('');
+  const [saving, setSaving] = useState(false);
 
   const rank = useMemo(
     () => leaderboard.find((e) => e.id === identity?.userId)?.rank ?? null,
     [leaderboard, identity]
   );
 
-  const accuracy = profile
-    ? accuracyPercentage(profile.exactPredictions, profile.correctOutcomes, profile.totalPredictions)
-    : 0;
+  const totalExact = (profile?.exactPredictions ?? 0) + (profile?.bonusExact ?? 0);
+  const totalCorrect = (profile?.correctOutcomes ?? 0) + (profile?.bonusCorrect ?? 0);
+  const totalPreds = (profile?.totalPredictions ?? 0) + (profile?.bonusTotalPredictions ?? 0);
+  const totalPoints = (profile?.points ?? 0) + (profile?.bonusPoints ?? 0);
+  const accuracy = accuracyPercentage(totalExact, totalCorrect, totalPreds);
 
   const matchesById = useMemo(() => new Map(matches.map((m) => [m.id, m])), [matches]);
 
@@ -31,6 +41,25 @@ export function ProfilePage() {
     .map((p) => ({ prediction: p, match: matchesById.get(p.matchId) }))
     .filter((r) => r.match)
     .sort((a, b) => (a.match!.kickoff > b.match!.kickoff ? -1 : 1));
+
+  const startEditing = () => {
+    setNameDraft(identity?.name ?? '');
+    setAvatarDraft(identity?.avatar ?? AVATARS[0]);
+    setEditing(true);
+  };
+
+  const handleSaveProfile = async () => {
+    setSaving(true);
+    try {
+      await updateProfile(nameDraft, avatarDraft);
+      toast.info('Profile updated');
+      setEditing(false);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Could not update profile');
+    } finally {
+      setSaving(false);
+    }
+  };
 
   if (!identity) {
     return (
@@ -58,13 +87,63 @@ export function ProfilePage() {
           <p className="text-sm text-chalk-500">
             {rank ? `Ranked #${rank} on the leaderboard` : 'Not ranked yet'}
           </p>
+          {!!profile?.bonusPoints && (
+            <p className="mt-0.5 text-xs text-gold-400">
+              {profile.bonusPoints > 0 ? `+${profile.bonusPoints} bonus 😇` : `${profile.bonusPoints} penalty 😂`}
+            </p>
+          )}
+          {!editing && (
+            <button onClick={startEditing} className="mt-2 text-xs font-semibold text-turf-400 hover:text-turf-300">
+              Edit name / avatar
+            </button>
+          )}
         </div>
         <div className="grid grid-cols-3 gap-6 sm:gap-8">
-          <Stat value={profile?.points ?? 0} label="Points" />
-          <Stat value={profile?.exactPredictions ?? 0} label="Exact" />
+          <Stat value={totalPoints} label="Points" />
+          <Stat value={totalExact} label="Exact" />
           <Stat value={`${accuracy}%`} label="Accuracy" />
         </div>
       </div>
+
+      {editing && (
+        <div className="glass-card mb-6 animate-fade-up p-6">
+          <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-chalk-500">
+            Display name
+          </label>
+          <input
+            value={nameDraft}
+            onChange={(e) => setNameDraft(e.target.value)}
+            maxLength={24}
+            className="mb-4 w-full rounded-lg border border-white/10 bg-pitch-900/60 px-4 py-2.5 text-chalk-100 outline-none focus:border-turf-400"
+          />
+          <label className="mb-2 block text-xs font-semibold uppercase tracking-wider text-chalk-500">
+            Avatar
+          </label>
+          <div className="mb-5 grid grid-cols-8 gap-2 sm:grid-cols-15">
+            {AVATARS.map((a) => (
+              <button
+                key={a}
+                onClick={() => setAvatarDraft(a)}
+                className={`flex aspect-square items-center justify-center rounded-lg border text-lg transition-all ${
+                  avatarDraft === a
+                    ? 'border-turf-400 bg-turf-500/15 shadow-glow'
+                    : 'border-white/10 bg-white/5 hover:border-white/20'
+                }`}
+              >
+                {a}
+              </button>
+            ))}
+          </div>
+          <div className="flex gap-2">
+            <button onClick={handleSaveProfile} disabled={saving} className="btn-primary px-4 py-2 text-sm">
+              {saving ? 'Saving…' : 'Save'}
+            </button>
+            <button onClick={() => setEditing(false)} className="btn-secondary px-4 py-2 text-sm">
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
 
       <h2 className="mb-3 font-display text-xl font-bold text-chalk-100">Your predictions</h2>
 
@@ -85,6 +164,11 @@ export function ProfilePage() {
             <div className="flex items-center gap-3">
               <span className="font-mono text-sm text-chalk-300">
                 {prediction.predictedHome}–{prediction.predictedAway}
+                {prediction.predictedPenaltyWinner && (
+                  <span className="ml-1 text-xs text-gold-400">
+                    (pens: {prediction.predictedPenaltyWinner === 'home' ? match!.homeTeam : match!.awayTeam})
+                  </span>
+                )}
               </span>
               {prediction.points !== null ? (
                 <OutcomeBadge outcome={prediction.outcome} points={prediction.points} />

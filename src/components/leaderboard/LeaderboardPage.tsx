@@ -1,12 +1,28 @@
+import { useEffect, useRef, useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useLeaderboard } from '@/hooks/useLeaderboard';
 import { LeaderboardRow } from './LeaderboardRow';
 import { RowSkeleton } from '@/components/common/Skeleton';
 import { EmptyState } from '@/components/common/EmptyState';
 
+const TOP_NICKNAME = 'متصدر لا تكلمني';
+const LAST_NICKNAME_FIRST = 'الحصالة';
+const LAST_NICKNAME_STILL = 'لسه حصالة برده';
+
 export function LeaderboardPage() {
   const { identity } = useAuth();
   const { leaderboard, loading } = useLeaderboard(true);
+
+  const lastEntry = leaderboard.length > 1 ? leaderboard[leaderboard.length - 1] : null;
+  const prevLastId = useRef<string | null>(null);
+  const [lastNickname, setLastNickname] = useState(LAST_NICKNAME_FIRST);
+
+  useEffect(() => {
+    if (!lastEntry) return;
+    setLastNickname(prevLastId.current === lastEntry.id ? LAST_NICKNAME_STILL : LAST_NICKNAME_FIRST);
+    prevLastId.current = lastEntry.id;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lastEntry?.id]);
 
   return (
     <div>
@@ -48,9 +64,18 @@ export function LeaderboardPage() {
       )}
 
       {!loading &&
-        leaderboard.map((entry) => (
-          <LeaderboardRow key={entry.id} entry={entry} isCurrentUser={entry.id === identity?.userId} />
-        ))}
+        leaderboard.map((entry) => {
+          const nickname =
+            entry.rank === 1 ? TOP_NICKNAME : lastEntry && entry.id === lastEntry.id ? lastNickname : undefined;
+          return (
+            <LeaderboardRow
+              key={entry.id}
+              entry={entry}
+              isCurrentUser={entry.id === identity?.userId}
+              nickname={nickname}
+            />
+          );
+        })}
     </div>
   );
 }

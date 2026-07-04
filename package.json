@@ -11,6 +11,7 @@
     "seed": "tsx scripts/seed.ts",
     "import:wc2026": "tsx scripts/import-worldcup-2026.ts",
     "recalculate": "tsx scripts/recalculate.ts",
+    "reset:matches": "tsx scripts/reset-matches.ts",
     "sync": "npm run import:wc2026 && npm run recalculate",
     "deploy": "npm run build && firebase deploy"
   },

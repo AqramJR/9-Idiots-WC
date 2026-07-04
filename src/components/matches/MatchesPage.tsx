@@ -7,7 +7,8 @@ import { MatchCard } from './MatchCard';
 import { MatchCardSkeleton } from '@/components/common/Skeleton';
 import { EmptyState } from '@/components/common/EmptyState';
 
-type Filter = 'open' | 'locked' | 'finished';
+// Changed 'open' to 'upcoming'
+type Filter = 'upcoming' | 'locked' | 'finished';
 
 const DAY = 24 * 60 * 60 * 1000;
 
@@ -16,16 +17,20 @@ export function MatchesPage() {
   const { matches, loading: matchesLoading } = useMatches();
   const { predictions, loading: predictionsLoading, savePrediction } = usePredictions(identity?.userId);
   const { usersMap } = useUsersMap();
-  const [filter, setFilter] = useState<Filter>('open');
+  const [filter, setFilter] = useState<Filter>('upcoming');
 
   const now = Date.now();
 
   const filtered = useMemo(() => {
     return matches.filter((m) => {
-      if (filter === 'open') return m.kickoff > now && m.status !== 'finished';
+      // 'upcoming' — shows ALL future matches, regardless of how far away they are. 
+      // The MatchCard will handle locking the inputs if it's > 20h away.
+      if (filter === 'upcoming') return m.kickoff > now && m.status !== 'finished';
+      
+      // 'locked' — matches that are currently playing (past kickoff, not finished).
       if (filter === 'locked') return m.kickoff <= now && m.status !== 'finished';
-      // 'finished' — only matches that finished recently (kicked off within the last 24h),
-      // so this tab doesn't pile up with the entire tournament history.
+      
+      // 'finished' — only matches that finished recently (kicked off within the last 24h).
       return m.status === 'finished' && now - m.kickoff <= DAY;
     });
   }, [matches, filter, now]);
@@ -37,10 +42,10 @@ export function MatchesPage() {
       <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
         <div>
           <h1 className="font-display text-3xl font-bold text-chalk-100">Matches</h1>
-          <p className="text-sm text-chalk-500">Lock in your scores before kickoff.</p>
+          <p className="text-sm text-chalk-500">Predictions open 20h before kickoff.</p>
         </div>
         <div className="flex gap-1 rounded-lg border border-white/10 bg-white/5 p-1">
-          {(['open', 'locked', 'finished'] as Filter[]).map((f) => (
+          {(['upcoming', 'locked', 'finished'] as Filter[]).map((f) => (
             <button
               key={f}
               onClick={() => setFilter(f)}
@@ -69,7 +74,9 @@ export function MatchesPage() {
           message={
             filter === 'finished'
               ? 'No matches finished in the last 24 hours.'
-              : 'Check back once matches in this category are added by the admin.'
+              : filter === 'upcoming'
+                ? 'There are no upcoming matches left in the tournament.'
+                : 'Check back once matches in this category are added by the admin.'
           }
         />
       )}
@@ -83,9 +90,9 @@ export function MatchesPage() {
               prediction={predictions[match.id]}
               usersMap={usersMap}
               currentUserId={identity?.userId}
-              onSave={async (h, a) => {
+              onSave={async (h, a, penaltyWinner) => {
                 if (!identity) return;
-                await savePrediction(identity.userId, match.id, h, a);
+                await savePrediction(identity.userId, match.id, h, a, penaltyWinner);
               }}
             />
           ))}

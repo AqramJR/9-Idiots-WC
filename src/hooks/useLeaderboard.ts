@@ -5,10 +5,17 @@ import type { LeaderboardEntry, User } from '@/types';
 import { useAppToast } from '@/context/ToastContext';
 
 function sortUsers(users: User[]): LeaderboardEntry[] {
-  const sorted = [...users].sort((a, b) => {
-    if (b.points !== a.points) return b.points - a.points;
-    if (b.exactPredictions !== a.exactPredictions) return b.exactPredictions - a.exactPredictions;
-    return b.correctOutcomes - a.correctOutcomes;
+  const withTotals = users.map((u) => ({
+    ...u,
+    totalPoints: u.points + (u.bonusPoints ?? 0),
+    totalExact: u.exactPredictions + (u.bonusExact ?? 0),
+    totalCorrect: u.correctOutcomes + (u.bonusCorrect ?? 0),
+    totalPredictionsCount: u.totalPredictions + (u.bonusTotalPredictions ?? 0),
+  }));
+  const sorted = withTotals.sort((a, b) => {
+    if (b.totalPoints !== a.totalPoints) return b.totalPoints - a.totalPoints;
+    if (b.totalExact !== a.totalExact) return b.totalExact - a.totalExact;
+    return b.totalCorrect - a.totalCorrect;
   });
   return sorted.map((u, i) => ({ ...u, rank: i + 1 }));
 }

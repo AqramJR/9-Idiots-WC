@@ -5,9 +5,11 @@ const MEDALS: Record<number, string> = { 1: '🥇', 2: '🥈', 3: '🥉' };
 export function LeaderboardRow({
   entry,
   isCurrentUser,
+  nickname,
 }: {
   entry: LeaderboardEntry;
   isCurrentUser: boolean;
+  nickname?: string;
 }) {
   const medal = MEDALS[entry.rank];
 
@@ -30,12 +32,13 @@ export function LeaderboardRow({
           {entry.name} {isCurrentUser && <span className="text-xs text-turf-400">(you)</span>}
         </div>
         <div className="text-xs text-chalk-500">
-          {entry.exactPredictions} exact · {entry.correctOutcomes} correct
+          {entry.totalExact} exact · {entry.totalCorrect} correct
         </div>
+        {nickname && <div className="mt-0.5 truncate text-[11px] italic text-gold-400">{nickname}</div>}
       </div>
 
       <div className="flex-shrink-0 text-right">
-        <div className="font-mono text-lg font-bold text-turf-400">{entry.points}</div>
+        <div className="font-mono text-lg font-bold text-turf-400">{entry.totalPoints}</div>
         <div className="text-[10px] uppercase tracking-wider text-chalk-500">pts</div>
       </div>
     </div>
