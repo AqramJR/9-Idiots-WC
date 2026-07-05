@@ -267,6 +267,11 @@ export function MatchCard({ match, prediction, onSave, usersMap, currentUserId }
                         <span className="flex items-center gap-2">
                           <span className="font-mono text-chalk-300">
                             {p.predictedHome}–{p.predictedAway}
+                            {isKnockout && p.predictedHome === p.predictedAway && p.predictedPenaltyWinner && (
+                              <span className="ml-1.5 font-sans text-[10px] font-semibold tracking-wider text-gold-400">
+                                ({p.predictedPenaltyWinner === 'home' ? match.homeTeam : match.awayTeam})
+                              </span>
+                            )}
                           </span>
                           {isFinished && p.points !== null && (
                             <span className="text-xs font-semibold text-chalk-500">+{p.points}</span>
