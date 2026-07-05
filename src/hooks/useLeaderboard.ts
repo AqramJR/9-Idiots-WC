@@ -7,7 +7,7 @@ import { useAppToast } from '@/context/ToastContext';
 function sortUsers(users: User[]): LeaderboardEntry[] {
   const withTotals = users.map((u) => ({
     ...u,
-    totalPoints: u.points + (u.bonusPoints ?? 0),
+    totalPoints: u.points + (u.bonusPoints ?? 0) + (u.streakBonusPoints ?? 0),
     totalExact: u.exactPredictions + (u.bonusExact ?? 0),
     totalCorrect: u.correctOutcomes + (u.bonusCorrect ?? 0),
     totalPredictionsCount: u.totalPredictions + (u.bonusTotalPredictions ?? 0),

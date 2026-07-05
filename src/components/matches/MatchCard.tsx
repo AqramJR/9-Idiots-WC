@@ -26,8 +26,6 @@ export function MatchCard({ match, prediction, onSave, usersMap, currentUserId }
   const [windowOpen, setWindowOpen] = useState(isPredictionWindowOpen(match.kickoff));
   const [countdown, setCountdown] = useState(formatCountdown(msUntil(match.kickoff)));
   const [showPredictions, setShowPredictions] = useState(false);
-  const [viewedOthers, setViewedOthers] = useState(false);
-  const [warnedThisView, setWarnedThisView] = useState(false);
   const toast = useAppToast();
 
   const notYetOpen = !locked && !windowOpen;
@@ -77,20 +75,15 @@ export function MatchCard({ match, prediction, onSave, usersMap, currentUserId }
   const togglePredictions = () => {
     setShowPredictions((v) => {
       const next = !v;
-      if (next && canViewOthers) {
-        // Fresh peek — arm the "caught you" jab for their next edit.
-        setViewedOthers(true);
-        setWarnedThisView(false);
+      // If they are opening the predictions panel, roast them immediately!
+      if (next && canViewOthers && canEdit) {
+        toast.caughtCopying(currentUserId);
       }
       return next;
     });
   };
 
   const handleScoreChange = (setter: (v: string) => void) => (v: string) => {
-    if (canEdit && viewedOthers && !warnedThisView) {
-      toast.caughtCopying(currentUserId);
-      setWarnedThisView(true);
-    }
     setter(v);
     setDirty(true);
   };

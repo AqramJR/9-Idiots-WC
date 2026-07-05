@@ -21,16 +21,15 @@ const toastStyle = {
   backdropFilter: 'blur(8px)',
 };
 
-// Shown when a player peeks at everyone else's predictions and then goes
-// back to edit their own. Add/remove/edit lines here freely — one is picked
-// at random each time (never the same line twice in a row) so repeat
-// peekers get a fresh roast instead of seeing the same message on loop.
+// Shown immediately when a player peeks at everyone else's predictions. 
+// Every 3rd time they peek, it escalates to the point deduction threat.
 const COPY_CATCH_MESSAGES: Array<{ text: string; icon: string }> = [
   { text: 'بطل تقليد 👀', icon: '😏' },
-  { text: 'شفناك بتتفرج 👁️', icon: '🕵️' },
-  { text: 'استحي، بتقلد كذا مرة؟', icon: '😂' },
-  { text: 'لا لا، فكر بنفسك 🧠', icon: '🙅' },
-  { text: 'التقليد ممنوع يا بطل', icon: '🚫' },
+  { text: 'يبني شايفك والله 👁️', icon: '🕵️' },
+  { text: 'ولما اخصم منك 5 نقط دولقتي', icon: '' },
+  { text: 'يبني خلي عندك شخصية 🧠', icon: '🙅' },
+  { text: 'طب تمام متجيش تعيط على الجروب', icon: '' },
+  { text: 'اتمنى تكون اشبعت فضولك', icon: '' },
 ];
 
 export function ToastProvider({ children }: { children: ReactNode }) {
@@ -51,7 +50,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
                 toast.dismiss(t.id);
                 try {
                   await adjustBonusPoints(userId, -5);
-                  toast('اتخصم منك 5 😂', { icon: '💸', style: toastStyle });
+                  toast('اتخصم منك 5 بونط', { icon: '💸', style: toastStyle });
                 } catch (err) {
                   console.error(err);
                 }

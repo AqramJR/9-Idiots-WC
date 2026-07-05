@@ -365,17 +365,13 @@ function MatchesTab() {
   );
 }
 
-/**
- * Admin can view and overwrite anyone's prediction for a match at any time —
- * even after kickoff. Firestore rules already allow this unconditionally
- * for admins (no kickoff check on the admin-only update rule).
- */
 function AdminMatchPredictions({ match }: { match: Match }) {
   const { predictions } = usePredictionsForMatch(match.id, true);
   const { usersMap } = useUsersMap();
   const toast = useAppToast();
   const [drafts, setDrafts] = useState<Record<string, { home: string; away: string }>>({});
   const [saving, setSaving] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState<string | null>(null);
 
   const userIds = Object.keys(usersMap);
   const byUser = new Map(predictions.map((p) => [p.userId, p]));
@@ -419,6 +415,25 @@ function AdminMatchPredictions({ match }: { match: Match }) {
     }
   };
 
+  const handleDeletePrediction = async (userId: string) => {
+    if (!confirm('Are you sure you want to completely delete this prediction?')) return;
+    setDeleting(userId);
+    try {
+      await deleteDoc(doc(db, 'predictions', `${userId}_${match.id}`));
+      toast.info('Prediction deleted');
+      setDrafts((prev) => {
+        const next = { ...prev };
+        delete next[userId];
+        return next;
+      });
+    } catch (err) {
+      console.error(err);
+      toast.error('Could not delete prediction');
+    } finally {
+      setDeleting(null);
+    }
+  };
+
   if (userIds.length === 0) return <p className="mt-3 text-xs text-chalk-500">No players yet.</p>;
 
   return (
@@ -450,11 +465,20 @@ function AdminMatchPredictions({ match }: { match: Match }) {
               />
               <button
                 onClick={() => handleSave(userId)}
-                disabled={saving === userId}
+                disabled={saving === userId || deleting === userId}
                 className="btn-secondary px-2 py-1 text-xs"
               >
                 {saving === userId ? '…' : 'Save'}
               </button>
+              {existing && (
+                <button
+                  onClick={() => handleDeletePrediction(userId)}
+                  disabled={saving === userId || deleting === userId}
+                  className="rounded-md border border-red-500/20 bg-red-500/10 px-2 py-1 text-xs font-semibold text-red-400 hover:bg-red-500/20 disabled:opacity-50"
+                >
+                  {deleting === userId ? '…' : 'Reset'}
+                </button>
+              )}
             </span>
           </div>
         );
@@ -468,12 +492,15 @@ function AdminPlayerPredictions({ userId, userName }: { userId: string; userName
   const { predictions, loading: predsLoading } = usePredictionsForUser(userId, true);
   const toast = useAppToast();
   const [drafts, setDrafts] = useState<Record<string, { home: string; away: string }>>({});
+  const [penaltyDrafts, setPenaltyDrafts] = useState<Record<string, PenaltyWinner | undefined>>({});
   const [saving, setSaving] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState<string | null>(null);
 
   const byMatch = new Map(predictions.map((p) => [p.matchId, p]));
   const sortedMatches = [...matches].sort((a, b) => a.kickoff - b.kickoff);
 
-  const handleSave = async (matchId: string) => {
+  const handleSave = async (match: Match) => {
+    const matchId = match.id;
     const draft = drafts[matchId];
     const existing = byMatch.get(matchId);
     const home = draft?.home ?? (existing ? String(existing.predictedHome) : '');
@@ -482,6 +509,16 @@ function AdminPlayerPredictions({ userId, userName }: { userId: string; userName
       toast.error('Enter both scores');
       return;
     }
+
+    const knockout = isKnockout(match);
+    const tied = Number(home) === Number(away);
+    const penaltyWinner = penaltyDrafts[matchId] ?? existing?.predictedPenaltyWinner ?? undefined;
+
+    if (knockout && tied && !penaltyWinner) {
+      toast.error('Tied knockout match — pick who won on penalties first');
+      return;
+    }
+
     setSaving(matchId);
     try {
       await setDoc(
@@ -491,6 +528,7 @@ function AdminPlayerPredictions({ userId, userName }: { userId: string; userName
           matchId,
           predictedHome: Number(home),
           predictedAway: Number(away),
+          predictedPenaltyWinner: knockout && tied ? penaltyWinner : null,
           points: existing?.points ?? null,
           outcome: existing?.outcome ?? null,
           createdAt: existing?.createdAt ?? Date.now(),
@@ -504,11 +542,40 @@ function AdminPlayerPredictions({ userId, userName }: { userId: string; userName
         delete next[matchId];
         return next;
       });
+      setPenaltyDrafts((prev) => {
+        const next = { ...prev };
+        delete next[matchId];
+        return next;
+      });
     } catch (err) {
       console.error(err);
       toast.error('Could not save prediction');
     } finally {
       setSaving(null);
+    }
+  };
+
+  const handleDeletePrediction = async (matchId: string) => {
+    if (!confirm('Are you sure you want to completely delete this prediction?')) return;
+    setDeleting(matchId);
+    try {
+      await deleteDoc(doc(db, 'predictions', `${userId}_${matchId}`));
+      toast.info('Prediction deleted');
+      setDrafts((prev) => {
+        const next = { ...prev };
+        delete next[matchId];
+        return next;
+      });
+      setPenaltyDrafts((prev) => {
+        const next = { ...prev };
+        delete next[matchId];
+        return next;
+      });
+    } catch (err) {
+      console.error(err);
+      toast.error('Could not delete prediction');
+    } finally {
+      setDeleting(null);
     }
   };
 
@@ -518,42 +585,83 @@ function AdminPlayerPredictions({ userId, userName }: { userId: string; userName
   if (sortedMatches.length === 0) return <p className="mt-3 text-xs text-chalk-500">No matches yet.</p>;
 
   return (
-    <div className="mt-3 flex flex-col gap-1.5 border-t border-white/5 pt-3">
+    <div className="mt-3 flex flex-col gap-2 border-t border-white/5 pt-3">
       {sortedMatches.map((match) => {
         const existing = byMatch.get(match.id);
         const home = drafts[match.id]?.home ?? (existing ? String(existing.predictedHome) : '');
         const away = drafts[match.id]?.away ?? (existing ? String(existing.predictedAway) : '');
+        const knockout = isKnockout(match);
+        const showsPenaltyPicker = knockout && home !== '' && away !== '' && Number(home) === Number(away);
+        const selectedPenaltyWinner = penaltyDrafts[match.id] ?? existing?.predictedPenaltyWinner ?? undefined;
+
         return (
-          <div key={match.id} className="flex items-center justify-between gap-2 rounded-lg px-2 py-1.5 text-sm">
-            <span className="flex min-w-0 items-center gap-1.5 truncate text-chalk-200">
-              <Flag value={match.homeFlag} size="sm" />
-              <span className="truncate">
-                {match.homeTeam} vs {match.awayTeam}
+          <div key={match.id} className="rounded-lg px-2 py-1.5">
+            <div className="flex items-center justify-between gap-2 text-sm">
+              <span className="flex min-w-0 items-center gap-1.5 truncate text-chalk-200">
+                <Flag value={match.homeFlag} size="sm" />
+                <span className="truncate">
+                  {match.homeTeam} vs {match.awayTeam}
+                </span>
+                <Flag value={match.awayFlag} size="sm" />
               </span>
-              <Flag value={match.awayFlag} size="sm" />
-            </span>
-            <span className="flex flex-shrink-0 items-center gap-1.5">
-              <input
-                type="number"
-                value={home}
-                onChange={(e) => setDrafts((prev) => ({ ...prev, [match.id]: { home: e.target.value, away } }))}
-                className="input-field h-8 w-12 text-xs"
-              />
-              <span className="text-chalk-500">–</span>
-              <input
-                type="number"
-                value={away}
-                onChange={(e) => setDrafts((prev) => ({ ...prev, [match.id]: { home, away: e.target.value } }))}
-                className="input-field h-8 w-12 text-xs"
-              />
-              <button
-                onClick={() => handleSave(match.id)}
-                disabled={saving === match.id}
-                className="btn-secondary px-2 py-1 text-xs"
-              >
-                {saving === match.id ? '…' : 'Save'}
-              </button>
-            </span>
+              <span className="flex flex-shrink-0 items-center gap-1.5">
+                <input
+                  type="number"
+                  value={home}
+                  onChange={(e) => setDrafts((prev) => ({ ...prev, [match.id]: { home: e.target.value, away } }))}
+                  className="input-field h-8 w-12 text-xs"
+                />
+                <span className="text-chalk-500">–</span>
+                <input
+                  type="number"
+                  value={away}
+                  onChange={(e) => setDrafts((prev) => ({ ...prev, [match.id]: { home, away: e.target.value } }))}
+                  className="input-field h-8 w-12 text-xs"
+                />
+                <button
+                  onClick={() => handleSave(match)}
+                  disabled={saving === match.id || deleting === match.id}
+                  className="btn-secondary px-2 py-1 text-xs"
+                >
+                  {saving === match.id ? '…' : 'Save'}
+                </button>
+                {existing && (
+                  <button
+                    onClick={() => handleDeletePrediction(match.id)}
+                    disabled={saving === match.id || deleting === match.id}
+                    className="rounded-md border border-red-500/20 bg-red-500/10 px-2 py-1 text-xs font-semibold text-red-400 hover:bg-red-500/20 disabled:opacity-50"
+                  >
+                    {deleting === match.id ? '…' : 'Reset'}
+                  </button>
+                )}
+              </span>
+            </div>
+
+            {showsPenaltyPicker && (
+              <div className="mt-1.5 flex items-center gap-2 rounded-lg border border-gold-500/20 bg-gold-500/5 px-2 py-1.5 text-xs">
+                <span className="text-gold-400">⚽ Tied — penalty winner?</span>
+                <button
+                  onClick={() => setPenaltyDrafts((prev) => ({ ...prev, [match.id]: 'home' }))}
+                  className={`rounded-md border px-2 py-1 font-semibold ${
+                    selectedPenaltyWinner === 'home'
+                      ? 'border-turf-400 bg-turf-500/20 text-turf-300'
+                      : 'border-white/15 text-chalk-300'
+                  }`}
+                >
+                  {match.homeTeam}
+                </button>
+                <button
+                  onClick={() => setPenaltyDrafts((prev) => ({ ...prev, [match.id]: 'away' }))}
+                  className={`rounded-md border px-2 py-1 font-semibold ${
+                    selectedPenaltyWinner === 'away'
+                      ? 'border-turf-400 bg-turf-500/20 text-turf-300'
+                      : 'border-white/15 text-chalk-300'
+                  }`}
+                >
+                  {match.awayTeam}
+                </button>
+              </div>
+            )}
           </div>
         );
       })}
@@ -636,13 +744,6 @@ function PlayersTab() {
 
   return (
     <div>
-      <p className="mb-4 text-sm text-chalk-500">
-        <strong className="text-chalk-300">Points / Exact / Correct / Total</strong> (first column of each pair) are
-        auto-computed from site predictions and get overwritten every recalculation. The{' '}
-        <strong className="text-turf-400">Bonus</strong> row next to each is what persists forever — use it for
-        manual corrections or to import your existing WhatsApp-group history as a starting baseline. Everything
-        shown elsewhere in the app is Computed + Bonus.
-      </p>
       <div className="flex flex-col gap-3">
         {leaderboard.map((user) => {
           const draft = drafts[user.id];
@@ -675,6 +776,11 @@ function PlayersTab() {
                     bonus={bt}
                     onBonusChange={(v) => setField(user.id, 'totalPredictions', v)}
                   />
+
+                  <div className="flex flex-col items-center gap-1">
+                    <span className="text-[10px] uppercase tracking-wider text-chalk-500">Streak</span>
+                    <span className="font-mono text-sm text-gold-400">+{user.streakBonusPoints ?? 0}</span>
+                  </div>
 
                   <div className="flex flex-col items-center gap-1">
                     <span className="text-[10px] uppercase tracking-wider text-chalk-500">Total pts</span>

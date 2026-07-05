@@ -17,6 +17,7 @@ export interface User {
   bonusExact: number; // manual baseline (e.g. imported WhatsApp history) — never touched by recalculation
   bonusCorrect: number; // manual baseline — never touched by recalculation
   bonusTotalPredictions: number; // manual baseline — never touched by recalculation
+  streakBonusPoints: number; // auto-computed by recalculation: +3 per consecutive exact score beyond the first in a row (2-in-a-row = +3, 3-in-a-row = +6, ...). Resets to 0 whenever a chronologically-next finished match is wrong or merely "correct".
   createdAt: number;
 }
 
@@ -56,7 +57,7 @@ export interface Prediction {
 
 export interface LeaderboardEntry extends User {
   rank: number;
-  totalPoints: number; // points + bonusPoints
+  totalPoints: number; // points + bonusPoints + streakBonusPoints
   totalExact: number; // exactPredictions + bonusExact
   totalCorrect: number; // correctOutcomes + bonusCorrect
   totalPredictionsCount: number; // totalPredictions + bonusTotalPredictions

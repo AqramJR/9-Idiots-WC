@@ -9,13 +9,15 @@ Built with **React + TypeScript + Tailwind CSS**, **Firebase** (Email/Password A
 ## Features
 
 - **Username + password login, works on any device** — no anonymous browser sessions to lose. "Keep me logged in" persists your session; log in with the same username/password from any phone or computer and your score comes with you.
-- **Live match predictions** — score inputs autosave to Firestore, and lock automatically the instant kickoff passes. Submit your pick and everyone else's picks for that match unlock immediately — try to sneak an edit after peeking and you'll get called out with a "بطل تقليد" toast first.
+- **Live match predictions** — score inputs autosave to Firestore, and lock automatically the instant kickoff passes. Submit your pick and everyone else's picks for that match unlock immediately — try to peek at others' picks before kickoff and you'll get called out instantly with a "بطل تقليد" toast.
 - **Automatic live sync** — a free GitHub Actions workflow re-imports real results and recalculates the leaderboard every 15 minutes, with no manual steps (see "Automatic live sync" below).
 - **Live leaderboard** — ranked by points → exact predictions → correct outcomes, top 3 get medals 🥇🥈🥉. Scoring rules are shown right on the leaderboard page.
-- **Admin dashboard** — protected page with two tabs: **Matches** (create/edit/delete matches, enter final scores, recalculate standings, reset all data, and **edit any player's prediction for that match — even after kickoff**, via the "Edit predictions" toggle on each match) and **Players** (adjust anyone's Points/Exact/Correct/Total-predictions via persistent Bonus fields, **view or edit any single player's predictions across every match** via "View predictions" on their row, or remove a player and their predictions entirely).
+- **Leaderboard Success History** — click on any player's row to expand a view showing exactly where they earned their points (green badges for exact scores, yellow for correct outcomes). 
+- **Exact Streak Bonus** — get back-to-back exact scores to earn compounding bonus points (+3, +6, +9, etc.).
+- **Admin dashboard** — protected page with two tabs: **Matches** (create/edit/delete matches, enter final scores, recalculate standings, reset all data, and edit any player's prediction) and **Players** (adjust anyone's totals via persistent Bonus fields, view/edit any single player's predictions, manually set knockout penalty winners, completely **reset/delete a prediction**, or remove a player entirely).
 - **Players can edit their own name and avatar** any time from the Profile page ("Edit name / avatar").
 - **Real team flags** — the `Flag` component renders either emoji flags or real flag image URLs (flagcdn.com) automatically, so flags look right on every OS/browser — including Windows, which doesn't render flag emoji.
-- **Scoring** — exact score = **+3**, correct winner/draw = **+1**, wrong = **0**.
+- **Scoring** — exact score = **+3**, correct winner/draw = **+1**, wrong = **0**, plus consecutive streak bonuses.
 - **Profile page** — your picks, points, rank, and accuracy %.
 - **Stats page** — most predicted winner, most predicted scoreline, outcome split, participation totals — all charted.
 - **Toasts** for every important event: prediction saved, match locked, scores updated, leaderboard changed.
@@ -92,8 +94,6 @@ Built with **React + TypeScript + Tailwind CSS**, **Firebase** (Email/Password A
 
 ---
 
-## Database Structure (Firestore)
-
 ### `users/{userId}`
 ```ts
 {
@@ -148,23 +148,16 @@ Implemented in `src/utils/scoring.ts`:
 - **Exact score** (predicted score == final score) → **+3**
 - **Correct winner/draw only** (predicted outcome == final outcome, score differs) → **+1**
 - **Wrong** → **0**
+- **Exact Streak Bonus (2+ consecutive exact scores chronologically)** → **+3, +6, +9...**
+
 
 The admin's **"Recalculate standings"** button (`src/utils/recalculate.ts`) re-scores every prediction against final results and rewrites each user's `points`, `exactPredictions`, `correctOutcomes`, `wrongPredictions`, and `totalPredictions` in batched Firestore writes.
 
-### `points` vs `bonusPoints`
-
-Each user has two separate point fields:
-
-- **`points`** — 100% auto-computed from scored predictions. Every recalculation (manual or the automatic GitHub Actions sync) **overwrites** this from scratch.
-- **`bonusPoints`** — manual adjustments only. Recalculation **never touches this field**, so it persists forever. This is where:
-  - Admin Dashboard → Players → **Bonus** field writes to (a straight `set`, via `setBonusPoints` in `src/utils/points.ts`).
-  - The "caught copying" troll penalty (see below) writes to, via an atomic `increment(-5)` (`adjustBonusPoints`).
-
-The leaderboard, profile page, and everywhere points are displayed always show **`points + bonusPoints`** (`LeaderboardEntry.totalPoints`) — never raw `points` alone. This is what fixed the earlier bug where admin-set points got wiped out the next time a match finished and standings recalculated.
+---
 
 ### The "بطل تقليد" troll mechanic
 
-Once you've submitted a prediction for a match, you can expand **"See everyone's predictions"** on that card. If you peek and then go edit your own pick before kickoff, you get a random roast toast (`caughtCopying` in `src/context/ToastContext.tsx` — edit the `COPY_CATCH_MESSAGES` array to add/change lines). Every 3rd time this happens (tracked in-memory per browser session), it escalates to a yes/no dialog offering a real **-5 bonus point** penalty if they own up to it — implemented with `toast.custom()` so it can render actual buttons, wired to `adjustBonusPoints(userId, -5)`.
+Once you've submitted a prediction for a match, you can expand **"See everyone's predictions"** on that card. The moment you open the panel to peek before kickoff, you get a random roast toast (`caughtCopying` in `src/context/ToastContext.tsx` — edit the `COPY_CATCH_MESSAGES` array to add/change lines). Every 3rd time this happens (tracked in-memory per browser session), it escalates to a yes/no dialog offering a real **-5 bonus point** penalty if they own up to it — implemented with `toast.custom()` so it can render actual buttons, wired to `adjustBonusPoints(userId, -5)`.
 
 ---
 
@@ -180,17 +173,6 @@ Once you've submitted a prediction for a match, you can expand **"See everyone's
   - The `admins` collection itself can only be **read** by a user checking their own UID — never listed, never written to from the client.
 
 ---
-
-## Migrating existing players from the old anonymous-login version
-
-If your friends already used this app before it switched to username/password login, **their old scores won't automatically carry over** — their old profile is tied to an anonymous browser session (a Firebase UID with no password behind it), which is exactly the bug this update fixes, but it does mean a one-time manual cleanup:
-
-1. Have each friend **sign up fresh** with a username + password (their old display name works fine as the new username too).
-2. Note what their **old total points / exact / correct / predictions count** were (check the leaderboard or your own notes before they re-signed up).
-3. In **Admin Dashboard → Players**, find their *new* account and set the **Bonus** fields (Points, Exact, Correct, Predictions) to match their old totals. Since `bonusPoints` etc. are never touched by recalculation, this permanently restores their standing.
-4. Once confirmed, delete their old orphaned anonymous account via **Remove** in the Players tab (it'll still be sitting there under the same display name, taking up a leaderboard row with 0 new activity).
-
-Their old individual match predictions won't transfer (they're tied to the old anonymous UID), but their overall standing does via the Bonus fields above — reasonable for a friends game where the leaderboard total is what actually matters.
 
 ## Getting Started
 
@@ -237,7 +219,6 @@ firebase login
 firebase use --add              # pick your project, alias it "default"
 firebase deploy --only firestore:rules,firestore:indexes
 ```
-
 ### 6. Make yourself (or someone) an admin
 
 There's no signup flow for this by design — it's a manual, one-time step so a random player can never grant themselves admin access:
@@ -377,7 +358,7 @@ If you're given updated files for this project (bug fixes, new features), **repl
 4. Run `npm install` (in case dependencies changed).
 5. Run `npm run build && firebase deploy`.
 
-If matches ever look duplicated or wrong after re-running an import/seed script with a different ID scheme, use **Admin Dashboard → Reset all matches** to wipe `matches` and `predictions` clean, then re-run the importer once.
+If matches ever look duplicated or wrong after re-running an import/seed script with a different ID sche
 
 ## Why flags are images, not emoji
 
@@ -392,6 +373,11 @@ Team flags are rendered as real flag *images* (via [flagcdn.com](https://flagcdn
 
 ---
 
+## What's next?
+- Multiple Leagues & Tournaments: Expanding the platform to support multiple concurrent competitions (e.g., Premier League, Champions League, AFCON) under a single unified dashboard, rather than being locked to a single tournament.
+
 ## License
 
 MIT — build on it, share it with your World Cup group chat.
+
+

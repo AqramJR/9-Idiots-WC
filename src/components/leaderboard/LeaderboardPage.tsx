@@ -12,6 +12,7 @@ const LAST_NICKNAME_STILL = 'لسه حصالة برده';
 export function LeaderboardPage() {
   const { identity } = useAuth();
   const { leaderboard, loading } = useLeaderboard(true);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
 
   const lastEntry = leaderboard.length > 1 ? leaderboard[leaderboard.length - 1] : null;
   const prevLastId = useRef<string | null>(null);
@@ -33,10 +34,12 @@ export function LeaderboardPage() {
 
       <div className="glass-card mb-6 p-5">
         <h2 className="mb-3 text-xs font-semibold uppercase tracking-wider text-chalk-500">How scoring works</h2>
-        <div className="grid grid-cols-3 gap-3 text-center">
+        {/* Updated to grid-cols-2 on mobile, and sm:grid-cols-4 on larger screens to fit the 4th rule */}
+        <div className="grid grid-cols-2 gap-3 text-center sm:grid-cols-4">
           <RuleCard icon="🎯" points="+3" label="Exact score" />
           <RuleCard icon="✅" points="+1" label="Predict the winner" />
           <RuleCard icon="❌" points="0" label="Wrong prediction" />
+          <RuleCard icon="🔥" points="+3, +6..." label="Exact streak bonus" />
         </div>
       </div>
 
@@ -73,6 +76,8 @@ export function LeaderboardPage() {
               entry={entry}
               isCurrentUser={entry.id === identity?.userId}
               nickname={nickname}
+              expanded={expandedId === entry.id}
+              onToggle={() => setExpandedId((cur) => (cur === entry.id ? null : entry.id))}
             />
           );
         })}

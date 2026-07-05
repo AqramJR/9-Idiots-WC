@@ -166,6 +166,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         bonusExact: 0,
         bonusCorrect: 0,
         bonusTotalPredictions: 0,
+        streakBonusPoints: 0,
         createdAt: Date.now(),
       });
     } catch (err) {

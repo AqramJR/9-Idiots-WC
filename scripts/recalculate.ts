@@ -53,6 +53,7 @@ function effectiveOutcome(
 }
 
 interface MatchDoc {
+  kickoff: number;
   finalHome: number | null;
   finalAway: number | null;
   finalPenaltyWinner?: PenaltyWinner | null;
@@ -83,6 +84,25 @@ function scorePrediction(
   return predicted === actual
     ? { points: POINTS_CORRECT, outcome: 'correct' }
     : { points: POINTS_WRONG, outcome: 'wrong' };
+}
+
+// Back-to-back exact score streak bonus: +3 for each consecutive exact score
+// beyond the first in a chronological run (2-in-a-row = +3, 3-in-a-row = +6,
+// 4-in-a-row = +9, ...). Any "correct"/"wrong" match resets the run to zero.
+// `chronologicalOutcomes` must already be sorted by kickoff, oldest first,
+// and include ONLY finished/scored matches.
+function computeStreakBonus(chronologicalOutcomes: Array<PredictionDoc['outcome']>): number {
+  let streak = 0;
+  let bonus = 0;
+  for (const outcome of chronologicalOutcomes) {
+    if (outcome === 'exact') {
+      streak += 1;
+      if (streak >= 2) bonus += 3;
+    } else {
+      streak = 0;
+    }
+  }
+  return bonus;
 }
 
 async function main() {
@@ -125,10 +145,24 @@ async function main() {
 
   const totals = new Map<
     string,
-    { points: number; exactPredictions: number; correctOutcomes: number; wrongPredictions: number; totalPredictions: number }
+    {
+      points: number;
+      exactPredictions: number;
+      correctOutcomes: number;
+      wrongPredictions: number;
+      totalPredictions: number;
+      streakBonusPoints: number;
+    }
   >();
   for (const id of userIds) {
-    totals.set(id, { points: 0, exactPredictions: 0, correctOutcomes: 0, wrongPredictions: 0, totalPredictions: 0 });
+    totals.set(id, {
+      points: 0,
+      exactPredictions: 0,
+      correctOutcomes: 0,
+      wrongPredictions: 0,
+      totalPredictions: 0,
+      streakBonusPoints: 0,
+    });
   }
   for (const p of scored) {
     if (p.points === null) continue;
@@ -139,6 +173,25 @@ async function main() {
     if (p.outcome === 'exact') t.exactPredictions += 1;
     else if (p.outcome === 'correct') t.correctOutcomes += 1;
     else if (p.outcome === 'wrong') t.wrongPredictions += 1;
+  }
+
+  // Streak bonus: group each user's scored predictions, sort by kickoff.
+  const scoredByUser = new Map<string, typeof scored>();
+  for (const p of scored) {
+    if (p.points === null) continue;
+    const list = scoredByUser.get(p.userId) ?? [];
+    list.push(p);
+    scoredByUser.set(p.userId, list);
+  }
+  for (const [userId, userPredictions] of scoredByUser.entries()) {
+    const t = totals.get(userId);
+    if (!t) continue;
+    const chronological = [...userPredictions].sort((a, b) => {
+      const ka = matches.get(a.matchId)?.kickoff ?? 0;
+      const kb = matches.get(b.matchId)?.kickoff ?? 0;
+      return ka - kb;
+    });
+    t.streakBonusPoints = computeStreakBonus(chronological.map((p) => p.outcome));
   }
 
   let batch = db.batch();
@@ -170,6 +223,7 @@ async function main() {
       correctOutcomes: t.correctOutcomes,
       wrongPredictions: t.wrongPredictions,
       totalPredictions: t.totalPredictions,
+      streakBonusPoints: t.streakBonusPoints,
     });
     opCount += 1;
     flush();
