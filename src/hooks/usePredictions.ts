@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { collection, doc, onSnapshot, query, setDoc, where } from 'firebase/firestore';
 import { db } from '@/firebase/config';
-import type { PenaltyWinner, Prediction } from '@/types';
+import type { PenaltyWinner, Prediction, Multiplier } from '@/types';
 
 export function usePredictions(userId: string | undefined) {
   const [predictions, setPredictions] = useState<Record<string, Prediction>>({});
@@ -39,7 +39,8 @@ export function usePredictions(userId: string | undefined) {
       matchId: string,
       home: number,
       away: number,
-      penaltyWinner?: PenaltyWinner | null
+      penaltyWinner?: PenaltyWinner | null,
+      multiplier?: Multiplier | null
     ) => {
       const predictionId = `${userId}_${matchId}`;
       const existing = predictions[matchId];
@@ -52,6 +53,7 @@ export function usePredictions(userId: string | undefined) {
           predictedHome: home,
           predictedAway: away,
           predictedPenaltyWinner: penaltyWinner ?? null,
+          multiplier: multiplier ?? 'none',
           points: existing?.points ?? null,
           outcome: existing?.outcome ?? null,
           createdAt: existing?.createdAt ?? now,

@@ -25,7 +25,7 @@ import { recalculateStandings } from '@/utils/recalculate';
 import { setBonusStats } from '@/utils/points';
 import { EmptyState } from '@/components/common/EmptyState';
 import { Flag } from '@/components/common/Flag';
-import type { Match, PenaltyWinner, User } from '@/types';
+import type { Match, PenaltyWinner, User, Multiplier } from '@/types';
 
 type Tab = 'matches' | 'players';
 
@@ -369,7 +369,7 @@ function AdminMatchPredictions({ match }: { match: Match }) {
   const { predictions } = usePredictionsForMatch(match.id, true);
   const { usersMap } = useUsersMap();
   const toast = useAppToast();
-  const [drafts, setDrafts] = useState<Record<string, { home: string; away: string }>>({});
+  const [drafts, setDrafts] = useState<Record<string, { home: string; away: string; multiplier?: Multiplier }>>({});
   const [saving, setSaving] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<string | null>(null);
 
@@ -381,6 +381,8 @@ function AdminMatchPredictions({ match }: { match: Match }) {
     const existing = byUser.get(userId);
     const home = draft?.home ?? (existing ? String(existing.predictedHome) : '');
     const away = draft?.away ?? (existing ? String(existing.predictedAway) : '');
+    const multiplier = draft?.multiplier ?? (existing?.multiplier ?? 'none');
+    
     if (home === '' || away === '') {
       toast.error('Enter both scores');
       return;
@@ -394,6 +396,7 @@ function AdminMatchPredictions({ match }: { match: Match }) {
           matchId: match.id,
           predictedHome: Number(home),
           predictedAway: Number(away),
+          multiplier,
           points: existing?.points ?? null,
           outcome: existing?.outcome ?? null,
           createdAt: existing?.createdAt ?? Date.now(),
@@ -443,6 +446,8 @@ function AdminMatchPredictions({ match }: { match: Match }) {
         const existing = byUser.get(userId);
         const home = drafts[userId]?.home ?? (existing ? String(existing.predictedHome) : '');
         const away = drafts[userId]?.away ?? (existing ? String(existing.predictedAway) : '');
+        const multiplier = drafts[userId]?.multiplier ?? (existing?.multiplier ?? 'none');
+        
         return (
           <div key={userId} className="flex items-center justify-between gap-2 rounded-lg px-2 py-1.5 text-sm">
             <span className="flex items-center gap-2 text-chalk-200">
@@ -453,16 +458,25 @@ function AdminMatchPredictions({ match }: { match: Match }) {
               <input
                 type="number"
                 value={home}
-                onChange={(e) => setDrafts((prev) => ({ ...prev, [userId]: { home: e.target.value, away } }))}
+                onChange={(e) => setDrafts((prev) => ({ ...prev, [userId]: { ...prev[userId], home: e.target.value, away } }))}
                 className="input-field h-8 w-12 text-xs"
               />
               <span className="text-chalk-500">–</span>
               <input
                 type="number"
                 value={away}
-                onChange={(e) => setDrafts((prev) => ({ ...prev, [userId]: { home, away: e.target.value } }))}
+                onChange={(e) => setDrafts((prev) => ({ ...prev, [userId]: { ...prev[userId], home, away: e.target.value } }))}
                 className="input-field h-8 w-12 text-xs"
               />
+              <select
+                value={multiplier}
+                onChange={(e) => setDrafts((prev) => ({ ...prev, [userId]: { ...prev[userId], home, away, multiplier: e.target.value as Multiplier } }))}
+                className="input-field h-8 text-xs px-1"
+              >
+                <option value="none">Boost: -</option>
+                <option value="double">Boost: x2</option>
+                <option value="triple">Boost: x3</option>
+              </select>
               <button
                 onClick={() => handleSave(userId)}
                 disabled={saving === userId || deleting === userId}
@@ -491,7 +505,7 @@ function AdminPlayerPredictions({ userId, userName }: { userId: string; userName
   const { matches, loading: matchesLoading } = useMatches();
   const { predictions, loading: predsLoading } = usePredictionsForUser(userId, true);
   const toast = useAppToast();
-  const [drafts, setDrafts] = useState<Record<string, { home: string; away: string }>>({});
+  const [drafts, setDrafts] = useState<Record<string, { home: string; away: string; multiplier?: Multiplier }>>({});
   const [penaltyDrafts, setPenaltyDrafts] = useState<Record<string, PenaltyWinner | undefined>>({});
   const [saving, setSaving] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<string | null>(null);
@@ -505,6 +519,8 @@ function AdminPlayerPredictions({ userId, userName }: { userId: string; userName
     const existing = byMatch.get(matchId);
     const home = draft?.home ?? (existing ? String(existing.predictedHome) : '');
     const away = draft?.away ?? (existing ? String(existing.predictedAway) : '');
+    const multiplier = draft?.multiplier ?? (existing?.multiplier ?? 'none');
+    
     if (home === '' || away === '') {
       toast.error('Enter both scores');
       return;
@@ -529,6 +545,7 @@ function AdminPlayerPredictions({ userId, userName }: { userId: string; userName
           predictedHome: Number(home),
           predictedAway: Number(away),
           predictedPenaltyWinner: knockout && tied ? penaltyWinner : null,
+          multiplier,
           points: existing?.points ?? null,
           outcome: existing?.outcome ?? null,
           createdAt: existing?.createdAt ?? Date.now(),
@@ -590,6 +607,8 @@ function AdminPlayerPredictions({ userId, userName }: { userId: string; userName
         const existing = byMatch.get(match.id);
         const home = drafts[match.id]?.home ?? (existing ? String(existing.predictedHome) : '');
         const away = drafts[match.id]?.away ?? (existing ? String(existing.predictedAway) : '');
+        const multiplier = drafts[match.id]?.multiplier ?? (existing?.multiplier ?? 'none');
+        
         const knockout = isKnockout(match);
         const showsPenaltyPicker = knockout && home !== '' && away !== '' && Number(home) === Number(away);
         const selectedPenaltyWinner = penaltyDrafts[match.id] ?? existing?.predictedPenaltyWinner ?? undefined;
@@ -608,16 +627,25 @@ function AdminPlayerPredictions({ userId, userName }: { userId: string; userName
                 <input
                   type="number"
                   value={home}
-                  onChange={(e) => setDrafts((prev) => ({ ...prev, [match.id]: { home: e.target.value, away } }))}
+                  onChange={(e) => setDrafts((prev) => ({ ...prev, [match.id]: { ...prev[match.id], home: e.target.value, away } }))}
                   className="input-field h-8 w-12 text-xs"
                 />
                 <span className="text-chalk-500">–</span>
                 <input
                   type="number"
                   value={away}
-                  onChange={(e) => setDrafts((prev) => ({ ...prev, [match.id]: { home, away: e.target.value } }))}
+                  onChange={(e) => setDrafts((prev) => ({ ...prev, [match.id]: { ...prev[match.id], home, away: e.target.value } }))}
                   className="input-field h-8 w-12 text-xs"
                 />
+                <select
+                  value={multiplier}
+                  onChange={(e) => setDrafts((prev) => ({ ...prev, [match.id]: { ...prev[match.id], home, away, multiplier: e.target.value as Multiplier } }))}
+                  className="input-field h-8 text-xs px-1"
+                >
+                  <option value="none">Boost: -</option>
+                  <option value="double">Boost: x2</option>
+                  <option value="triple">Boost: x3</option>
+                </select>
                 <button
                   onClick={() => handleSave(match)}
                   disabled={saving === match.id || deleting === match.id}
@@ -673,7 +701,7 @@ function PlayersTab() {
   const { leaderboard, loading } = useLeaderboard(false);
   const toast = useAppToast();
   const [drafts, setDrafts] = useState<
-    Record<string, { points?: string; exact?: string; correct?: string; totalPredictions?: string }>
+    Record<string, { points?: string; exact?: string; correct?: string; totalPredictions?: string; doubles?: string; triples?: string; }>
   >({});
   const [saving, setSaving] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<string | null>(null);
@@ -681,7 +709,7 @@ function PlayersTab() {
 
   const setField = (
     userId: string,
-    field: 'points' | 'exact' | 'correct' | 'totalPredictions',
+    field: 'points' | 'exact' | 'correct' | 'totalPredictions' | 'doubles' | 'triples',
     value: string
   ) => {
     setDrafts((prev) => ({ ...prev, [userId]: { ...prev[userId], [field]: value } }));
@@ -695,15 +723,17 @@ function PlayersTab() {
     const correct = draft.correct !== undefined ? Number(draft.correct) : (user.bonusCorrect ?? 0);
     const totalPredictions =
       draft.totalPredictions !== undefined ? Number(draft.totalPredictions) : (user.bonusTotalPredictions ?? 0);
+    const doubles = draft.doubles !== undefined ? Number(draft.doubles) : (user.bonusDoubles ?? 0);
+    const triples = draft.triples !== undefined ? Number(draft.triples) : (user.bonusTriples ?? 0);
 
-    if ([points, exact, correct, totalPredictions].some((v) => Number.isNaN(v))) {
+    if ([points, exact, correct, totalPredictions, doubles, triples].some((v) => Number.isNaN(v))) {
       toast.error('Bonus values must be numbers');
       return;
     }
 
     setSaving(user.id);
     try {
-      await setBonusStats(user.id, { points, exact, correct, totalPredictions });
+      await setBonusStats(user.id, { points, exact, correct, totalPredictions, doubles, triples });
       toast.scoresUpdated();
       setDrafts((prev) => {
         const next = { ...prev };
@@ -752,6 +782,8 @@ function PlayersTab() {
           const be = draft?.exact ?? String(user.bonusExact ?? 0);
           const bc = draft?.correct ?? String(user.bonusCorrect ?? 0);
           const bt = draft?.totalPredictions ?? String(user.bonusTotalPredictions ?? 0);
+          const bd = draft?.doubles ?? String(user.bonusDoubles ?? 0);
+          const btrip = draft?.triples ?? String(user.bonusTriples ?? 0);
 
           return (
             <div key={user.id} className="glass-card p-4">
@@ -775,6 +807,18 @@ function PlayersTab() {
                     computed={user.totalPredictions}
                     bonus={bt}
                     onBonusChange={(v) => setField(user.id, 'totalPredictions', v)}
+                  />
+                  <StatPair 
+                    label="Doubles" 
+                    computed={1 + (user.earnedDoubles ?? 0) - (user.usedDoubles ?? 0)} 
+                    bonus={bd} 
+                    onBonusChange={(v) => setField(user.id, 'doubles', v)} 
+                  />
+                  <StatPair 
+                    label="Triples" 
+                    computed={1 - (user.usedTriples ?? 0)} 
+                    bonus={btrip} 
+                    onBonusChange={(v) => setField(user.id, 'triples', v)} 
                   />
 
                   <div className="flex flex-col items-center gap-1">

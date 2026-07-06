@@ -17,6 +17,9 @@ export function LeaderboardRow({
   onToggle: () => void;
 }) {
   const medal = MEDALS[entry.rank];
+  
+  const availableDoubles = 1 + (entry.earnedDoubles ?? 0) + (entry.bonusDoubles ?? 0) - (entry.usedDoubles ?? 0);
+  const availableTriples = 1 + (entry.bonusTriples ?? 0) - (entry.usedTriples ?? 0);
 
   return (
     <div
@@ -41,8 +44,12 @@ export function LeaderboardRow({
           <div className="truncate font-semibold text-chalk-100">
             {entry.name} {isCurrentUser && <span className="text-xs text-turf-400">(you)</span>}
           </div>
-          <div className="text-xs text-chalk-500">
-            {entry.totalExact} exact · {entry.totalCorrect} correct
+          <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-chalk-500">
+            <span>{entry.totalExact} exact · {entry.totalCorrect} correct</span>
+            <span className="flex items-center gap-2">
+              <span className="font-semibold text-blue-400">💎 {availableDoubles}</span>
+              <span className="font-semibold text-purple-400">☠️ {availableTriples}</span>
+            </span>
           </div>
           {nickname && <div className="mt-0.5 truncate text-[11px] italic text-gold-400">{nickname}</div>}
         </div>

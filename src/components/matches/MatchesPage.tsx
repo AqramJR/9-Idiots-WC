@@ -35,6 +35,16 @@ export function MatchesPage() {
     });
   }, [matches, filter, now]);
 
+  // --- LIVE MULTIPLIER COUNTER ---
+  const currentUser = identity ? usersMap[identity.userId] : undefined;
+  
+  const liveUsedDoubles = Object.values(predictions).filter(p => p.multiplier === 'double').length;
+  const liveUsedTriples = Object.values(predictions).filter(p => p.multiplier === 'triple').length;
+
+  const availableDoubles = currentUser ? 1 + (currentUser.earnedDoubles ?? 0) + (currentUser.bonusDoubles ?? 0) - liveUsedDoubles : 0;
+  const availableTriples = currentUser ? 1 + (currentUser.bonusTriples ?? 0) - liveUsedTriples : 0;
+  // --------------------------------
+
   const loading = matchesLoading || predictionsLoading;
 
   return (
@@ -90,9 +100,11 @@ export function MatchesPage() {
               prediction={predictions[match.id]}
               usersMap={usersMap}
               currentUserId={identity?.userId}
-              onSave={async (h, a, penaltyWinner) => {
+              availableDoubles={availableDoubles}
+              availableTriples={availableTriples}
+              onSave={async (h, a, penaltyWinner, multiplier) => {
                 if (!identity) return;
-                await savePrediction(identity.userId, match.id, h, a, penaltyWinner);
+                await savePrediction(identity.userId, match.id, h, a, penaltyWinner, multiplier);
               }}
             />
           ))}

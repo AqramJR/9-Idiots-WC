@@ -21,12 +21,14 @@ export async function adjustBonusPoints(userId: string, delta: number): Promise<
  */
 export async function setBonusStats(
   userId: string,
-  values: { points: number; exact: number; correct: number; totalPredictions: number }
+  values: { points: number; exact: number; correct: number; totalPredictions: number; doubles: number; triples: number }
 ): Promise<void> {
   await updateDoc(doc(db, 'users', userId), {
     bonusPoints: values.points,
     bonusExact: values.exact,
     bonusCorrect: values.correct,
     bonusTotalPredictions: values.totalPredictions,
+    bonusDoubles: values.doubles,
+    bonusTriples: values.triples,
   });
 }

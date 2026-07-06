@@ -13,6 +13,7 @@ Built with **React + TypeScript + Tailwind CSS**, **Firebase** (Email/Password A
 - **Automatic live sync** — a free GitHub Actions workflow re-imports real results and recalculates the leaderboard every 15 minutes, with no manual steps (see "Automatic live sync" below).
 - **Live leaderboard** — ranked by points → exact predictions → correct outcomes, top 3 get medals 🥇🥈🥉. Scoring rules are shown right on the leaderboard page.
 - **Leaderboard Success History** — click on any player's row to expand a view showing exactly where they earned their points (green badges for exact scores, yellow for correct outcomes). 
+- **Boost Tokens (Double & Triple)**: Activate a `💎 x2 Double` (earn 1 for every 3 exact scores) or a high-risk `☠️ x3 Triple` (1 per tournament: x3 for exact, +1 for correct, but -3 penalty for a wrong guess) to multiply your points.
 - **Exact Streak Bonus** — get back-to-back exact scores to earn compounding bonus points (+3, +6, +9, etc.).
 - **Admin dashboard** — protected page with two tabs: **Matches** (create/edit/delete matches, enter final scores, recalculate standings, reset all data, and edit any player's prediction) and **Players** (adjust anyone's totals via persistent Bonus fields, view/edit any single player's predictions, manually set knockout penalty winners, completely **reset/delete a prediction**, or remove a player entirely).
 - **Players can edit their own name and avatar** any time from the Profile page ("Edit name / avatar").

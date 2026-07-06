@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import type { Match, PenaltyWinner, Prediction, User } from '@/types';
+import type { Match, PenaltyWinner, Prediction, User, Multiplier } from '@/types';
 import { formatKickoff, formatCountdown, isLocked, isPredictionWindowOpen, msUntil, PREDICTION_WINDOW_MS } from '@/utils/dateHelpers';
 import { useAppToast } from '@/context/ToastContext';
 import { Flag } from '@/components/common/Flag';
@@ -8,18 +8,21 @@ import { usePredictionsForMatch } from '@/hooks/usePredictionsForMatch';
 interface MatchCardProps {
   match: Match;
   prediction: Prediction | undefined;
-  onSave: (home: number, away: number, penaltyWinner?: PenaltyWinner | null) => Promise<void>;
+  onSave: (home: number, away: number, penaltyWinner?: PenaltyWinner | null, multiplier?: Multiplier | null) => Promise<void>;
   usersMap: Record<string, User>;
   currentUserId?: string;
+  availableDoubles: number;
+  availableTriples: number;
 }
 
-export function MatchCard({ match, prediction, onSave, usersMap, currentUserId }: MatchCardProps) {
+export function MatchCard({ match, prediction, onSave, usersMap, currentUserId, availableDoubles, availableTriples }: MatchCardProps) {
   const isKnockout = !match.group;
   const [home, setHome] = useState<string>(prediction ? String(prediction.predictedHome) : '0');
   const [away, setAway] = useState<string>(prediction ? String(prediction.predictedAway) : '0');
   const [penaltyWinner, setPenaltyWinner] = useState<PenaltyWinner | null>(
     prediction?.predictedPenaltyWinner ?? null
   );
+  const [multiplier, setMultiplier] = useState<Multiplier>(prediction?.multiplier ?? 'none');
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [locked, setLocked] = useState(isLocked(match.kickoff));
@@ -33,27 +36,23 @@ export function MatchCard({ match, prediction, onSave, usersMap, currentUserId }
   const isTied = home !== '' && away !== '' && home === away;
   const needsPenaltyPick = isKnockout && isTied;
 
-  // You unlock everyone else's picks the moment you've submitted your own —
-  // no waiting for kickoff. Keeps things friendly and fast-paced.
   const canViewOthers = !!prediction;
   const { predictions: allPredictions, loading: loadingAll } = usePredictionsForMatch(match.id, showPredictions);
 
-  // Keep inputs synced if prediction loads/changes from Firestore (e.g. cross-device).
+  // Keep inputs synced if prediction loads/changes from Firestore
   useEffect(() => {
     if (!dirty && prediction) {
       setHome(String(prediction.predictedHome));
       setAway(String(prediction.predictedAway));
       setPenaltyWinner(prediction.predictedPenaltyWinner ?? null);
+      setMultiplier(prediction.multiplier ?? 'none');
     }
   }, [prediction, dirty]);
 
-  // Clear a stale penalty pick the moment the scoreline stops being tied.
   useEffect(() => {
     if (!needsPenaltyPick) setPenaltyWinner(null);
   }, [needsPenaltyPick]);
 
-  // Live countdown + auto-lock the instant kickoff passes, and auto-open the
-  // instant we enter the 20-hour prediction window before kickoff.
   useEffect(() => {
     const tick = () => {
       const nowLocked = isLocked(match.kickoff);
@@ -75,7 +74,6 @@ export function MatchCard({ match, prediction, onSave, usersMap, currentUserId }
   const togglePredictions = () => {
     setShowPredictions((v) => {
       const next = !v;
-      // If they are opening the predictions panel, roast them immediately!
       if (next && canViewOthers && canEdit) {
         toast.caughtCopying(currentUserId);
       }
@@ -102,7 +100,7 @@ export function MatchCard({ match, prediction, onSave, usersMap, currentUserId }
     }
     setSaving(true);
     try {
-      await onSave(h, a, needsPenaltyPick ? penaltyWinner : null);
+      await onSave(h, a, needsPenaltyPick ? penaltyWinner : null, multiplier);
       setDirty(false);
       toast.predictionSaved();
     } catch (err) {
@@ -114,8 +112,13 @@ export function MatchCard({ match, prediction, onSave, usersMap, currentUserId }
   };
 
   const hasChanges = !prediction
-    ? true // first-ever submission for this match — always allow saving, even if left at the default 0-0
-    : dirty && !(String(prediction.predictedHome) === home && String(prediction.predictedAway) === away);
+    ? true 
+    : dirty && !(
+        String(prediction.predictedHome) === home && 
+        String(prediction.predictedAway) === away &&
+        (prediction.predictedPenaltyWinner ?? null) === penaltyWinner &&
+        (prediction.multiplier ?? 'none') === multiplier
+      );
 
   const isFinished = match.status === 'finished' && match.finalHome !== null && match.finalAway !== null;
 
@@ -169,31 +172,55 @@ export function MatchCard({ match, prediction, onSave, usersMap, currentUserId }
           <div className="flex gap-2">
             <button
               type="button"
-              onClick={() => {
-                setPenaltyWinner('home');
-                setDirty(true);
-              }}
+              onClick={() => { setPenaltyWinner('home'); setDirty(true); }}
               className={`flex-1 rounded-lg border px-3 py-2 text-sm font-semibold transition-colors ${
-                penaltyWinner === 'home'
-                  ? 'border-turf-400 bg-turf-500/20 text-turf-300'
-                  : 'border-white/10 bg-white/5 text-chalk-300 hover:border-white/20'
+                penaltyWinner === 'home' ? 'border-turf-400 bg-turf-500/20 text-turf-300' : 'border-white/10 bg-white/5 text-chalk-300 hover:border-white/20'
               }`}
             >
               {match.homeTeam}
             </button>
             <button
               type="button"
-              onClick={() => {
-                setPenaltyWinner('away');
-                setDirty(true);
-              }}
+              onClick={() => { setPenaltyWinner('away'); setDirty(true); }}
               className={`flex-1 rounded-lg border px-3 py-2 text-sm font-semibold transition-colors ${
-                penaltyWinner === 'away'
-                  ? 'border-turf-400 bg-turf-500/20 text-turf-300'
-                  : 'border-white/10 bg-white/5 text-chalk-300 hover:border-white/20'
+                penaltyWinner === 'away' ? 'border-turf-400 bg-turf-500/20 text-turf-300' : 'border-white/10 bg-white/5 text-chalk-300 hover:border-white/20'
               }`}
             >
               {match.awayTeam}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {canEdit && !isFinished && (
+        <div className="mt-4 flex flex-col gap-2 rounded-lg border border-white/5 bg-white/[0.02] p-3">
+          <div className="flex justify-between items-center text-[10px] uppercase tracking-wider text-chalk-500 font-semibold">
+            <span>Boost your points</span>
+            <span>{availableDoubles}x Double · {availableTriples}x Triple</span>
+          </div>
+          <div className="flex gap-2">
+            <button 
+              type="button"
+              onClick={() => { setMultiplier('none'); setDirty(true); }}
+              className={`flex-1 rounded-md border px-2 py-1.5 text-xs font-semibold transition-colors ${multiplier === 'none' ? 'border-white/20 bg-white/10 text-chalk-200' : 'border-white/5 bg-transparent text-chalk-500 hover:border-white/10'}`}
+            >
+              No boost
+            </button>
+            <button 
+              type="button"
+              disabled={availableDoubles <= 0 && prediction?.multiplier !== 'double'}
+              onClick={() => { setMultiplier('double'); setDirty(true); }}
+              className={`flex-1 rounded-md border px-2 py-1.5 text-xs font-semibold transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${multiplier === 'double' ? 'border-blue-400/50 bg-blue-500/20 text-blue-300' : 'border-blue-500/10 bg-blue-500/5 text-blue-400/60 hover:border-blue-500/20'}`}
+            >
+              x2 Double
+            </button>
+            <button 
+              type="button"
+              disabled={availableTriples <= 0 && prediction?.multiplier !== 'triple'}
+              onClick={() => { setMultiplier('triple'); setDirty(true); }}
+              className={`flex-1 rounded-md border px-2 py-1.5 text-xs font-semibold transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${multiplier === 'triple' ? 'border-purple-400/50 bg-purple-500/20 text-purple-300' : 'border-purple-500/10 bg-purple-500/5 text-purple-400/60 hover:border-purple-500/20'}`}
+            >
+              x3 Triple
             </button>
           </div>
         </div>
@@ -225,7 +252,7 @@ export function MatchCard({ match, prediction, onSave, usersMap, currentUserId }
         )}
 
         {isFinished && prediction && prediction.points !== null && (
-          <PointsBadge outcome={prediction.outcome} points={prediction.points} />
+          <PointsBadge outcome={prediction.outcome} points={prediction.points} multiplier={prediction.multiplier} />
         )}
       </div>
 
@@ -265,6 +292,8 @@ export function MatchCard({ match, prediction, onSave, usersMap, currentUserId }
                           </span>
                         </span>
                         <span className="flex items-center gap-2">
+                          {p.multiplier === 'double' && <span className="text-[10px] font-bold text-blue-400 uppercase tracking-wider bg-blue-500/10 px-1.5 rounded">x2</span>}
+                          {p.multiplier === 'triple' && <span className="text-[10px] font-bold text-purple-400 uppercase tracking-wider bg-purple-500/10 px-1.5 rounded">x3</span>}
                           <span className="font-mono text-chalk-300">
                             {p.predictedHome}–{p.predictedAway}
                             {isKnockout && p.predictedHome === p.predictedAway && p.predictedPenaltyWinner && (
@@ -274,7 +303,9 @@ export function MatchCard({ match, prediction, onSave, usersMap, currentUserId }
                             )}
                           </span>
                           {isFinished && p.points !== null && (
-                            <span className="text-xs font-semibold text-chalk-500">+{p.points}</span>
+                            <span className={`text-xs font-semibold ${p.points < 0 ? 'text-red-400' : 'text-chalk-500'}`}>
+                              {p.points > 0 ? '+' : ''}{p.points}
+                            </span>
                           )}
                         </span>
                       </div>
@@ -321,17 +352,20 @@ function ScoreInput({
   );
 }
 
-function PointsBadge({ outcome, points }: { outcome: Prediction['outcome']; points: number }) {
+function PointsBadge({ outcome, points, multiplier }: { outcome: Prediction['outcome']; points: number; multiplier?: Multiplier | null }) {
+  const isTripleFail = outcome === 'wrong' && multiplier === 'triple';
   const styles =
     outcome === 'exact'
       ? 'bg-turf-500/15 text-turf-400'
       : outcome === 'correct'
         ? 'bg-gold-500/15 text-gold-400'
-        : 'bg-white/5 text-chalk-500';
-  const label = outcome === 'exact' ? 'Exact score!' : outcome === 'correct' ? 'Correct result' : 'No points';
+        : isTripleFail
+          ? 'bg-red-500/15 text-red-400 border border-red-500/30'
+          : 'bg-white/5 text-chalk-500';
+  const label = outcome === 'exact' ? 'Exact score!' : outcome === 'correct' ? 'Correct result' : isTripleFail ? 'Ouch!' : 'No points';
   return (
     <span className={`rounded-full px-3 py-1 text-xs font-semibold ${styles}`}>
-      {label} · +{points}
+      {label} · {points > 0 ? '+' : ''}{points}
     </span>
   );
 }
