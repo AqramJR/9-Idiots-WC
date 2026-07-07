@@ -84,5 +84,13 @@ service cloud.firestore {
 
       allow delete: if isAdmin();
     }
+
+    // ---------- settings ----------
+    // Anyone signed in can read global settings (like the popup video).
+    // Only admins can change them.
+    match /settings/{document} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
   }
 }

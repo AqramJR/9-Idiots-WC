@@ -1,10 +1,12 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   addDoc,
   collection,
   deleteDoc,
   doc,
+  getDoc,
   getDocs,
+  onSnapshot,
   query,
   setDoc,
   updateDoc,
@@ -27,7 +29,7 @@ import { EmptyState } from '@/components/common/EmptyState';
 import { Flag } from '@/components/common/Flag';
 import type { Match, PenaltyWinner, User, Multiplier } from '@/types';
 
-type Tab = 'matches' | 'players';
+type Tab = 'matches' | 'players' | 'media';
 
 export function AdminDashboard() {
   const [tab, setTab] = useState<Tab>('matches');
@@ -62,9 +64,123 @@ export function AdminDashboard() {
         >
           Players
         </button>
+        <button
+          onClick={() => setTab('media')}
+          className={`rounded-md px-4 py-1.5 text-sm font-semibold transition-colors ${
+            tab === 'media' ? 'bg-turf-500 text-pitch-950' : 'text-chalk-300 hover:text-chalk-100'
+          }`}
+        >
+          Media
+        </button>
       </div>
 
-      {tab === 'matches' ? <MatchesTab /> : <PlayersTab />}
+      {tab === 'matches' && <MatchesTab />}
+      {tab === 'players' && <PlayersTab />}
+      {tab === 'media' && <MediaTab />}
+    </div>
+  );
+}
+
+function MediaTab() {
+  const [urls, setUrls] = useState('');
+  const [mode, setMode] = useState<'disabled' | 'forced' | 'auto'>('disabled');
+  const [targetTeam, setTargetTeam] = useState('Egypt');
+  const [settings, setSettings] = useState<any>(null);
+  const [saving, setSaving] = useState(false);
+  const toast = useAppToast();
+
+  useEffect(() => {
+    const unsub = onSnapshot(doc(db, 'settings', 'popup'), (d) => {
+      if (d.exists()) {
+        const data = d.data();
+        setSettings(data);
+        if (data.mediaUrls) setUrls(data.mediaUrls.join('\n'));
+        if (data.mode) setMode(data.mode);
+        if (data.targetTeam) setTargetTeam(data.targetTeam);
+      }
+    });
+    return () => unsub();
+  }, []);
+
+  const handleSaveSettings = async () => {
+    const urlArray = urls.split('\n').map(u => u.trim()).filter(Boolean);
+    
+    if (mode !== 'disabled' && urlArray.length === 0) {
+      toast.error('You must provide at least one direct media URL');
+      return;
+    }
+
+    setSaving(true);
+    try {
+      await setDoc(doc(db, 'settings', 'popup'), { 
+        mediaUrls: urlArray, 
+        mode,
+        targetTeam,
+        // Preserve the last win time so we don't accidentally re-trigger or wipe it
+        lastAutoWinTime: settings?.lastAutoWinTime || 0 
+      }, { merge: true });
+      toast.info('Popup settings saved!');
+    } catch (err) {
+      console.error(err);
+      toast.error('Could not save settings');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="glass-card p-6 animate-fade-up">
+      <h2 className="mb-4 font-display text-xl font-bold text-chalk-100">Celebration Pop-up</h2>
+      <p className="mb-6 text-sm text-chalk-400">
+        Paste direct links ending in <span className="font-mono text-gold-400">.mp4, .gif, .jpg, or .png</span> (one per line). The app will randomly pick one to show.
+      </p>
+
+      <div className="mb-6 flex flex-col gap-4">
+        <div>
+          <label className="mb-2 block text-xs font-semibold uppercase tracking-wider text-chalk-500">Popup Mode</label>
+          <select 
+            value={mode} 
+            onChange={(e) => setMode(e.target.value as any)}
+            className="input-field h-10 w-full text-sm sm:w-1/2"
+          >
+            <option value="disabled">🚫 Disabled (Off for everyone)</option>
+            <option value="forced">🔥 Forced On (Pops up every time they open the site)</option>
+            <option value="auto">🏆 Auto-Trigger (Only pops up if a specific team wins)</option>
+          </select>
+        </div>
+
+        {mode === 'auto' && (
+          <div className="animate-fade-up">
+            <label className="mb-2 block text-xs font-semibold uppercase tracking-wider text-chalk-500">Trigger Team Name</label>
+            <input 
+              type="text" 
+              value={targetTeam}
+              onChange={(e) => setTargetTeam(e.target.value)}
+              placeholder="e.g. Egypt"
+              className="input-field h-10 w-full text-sm sm:w-1/2"
+            />
+            <p className="mt-1 text-xs text-chalk-500">If you save a final score where this team wins, the popup will trigger for all players until they make a new prediction.</p>
+          </div>
+        )}
+
+        <div>
+          <label className="mb-2 block text-xs font-semibold uppercase tracking-wider text-chalk-500">Media URLs (One per line)</label>
+          <textarea 
+            value={urls}
+            onChange={(e) => setUrls(e.target.value)}
+            placeholder="https://i.imgur.com/example.mp4&#10;https://i.imgur.com/example2.gif"
+            className="input-field min-h-[120px] w-full text-sm"
+          />
+        </div>
+      </div>
+
+      <button 
+        onClick={handleSaveSettings} 
+        disabled={saving} 
+        className="btn-primary w-full sm:w-auto px-8 py-2 text-sm"
+      >
+        {saving ? 'Saving...' : 'Save Settings'}
+      </button>
     </div>
   );
 }
@@ -149,6 +265,28 @@ function MatchesTab() {
         finalPenaltyWinner: knockout && tied ? penaltyDrafts[match.id] : null,
         status: 'finished',
       });
+
+      // --- AUTO POPUP TRIGGER LOGIC ---
+      const settingsSnap = await getDoc(doc(db, 'settings', 'popup'));
+      if (settingsSnap.exists()) {
+        const data = settingsSnap.data();
+        if (data.mode === 'auto' && data.targetTeam) {
+          const isHome = match.homeTeam.toLowerCase() === data.targetTeam.toLowerCase();
+          const isAway = match.awayTeam.toLowerCase() === data.targetTeam.toLowerCase();
+          
+          if (isHome || isAway) {
+            const homeWon = home > away || (home === away && penaltyDrafts[match.id] === 'home');
+            const awayWon = away > home || (home === away && penaltyDrafts[match.id] === 'away');
+            
+            if ((isHome && homeWon) || (isAway && awayWon)) {
+              await setDoc(doc(db, 'settings', 'popup'), { lastAutoWinTime: Date.now() }, { merge: true });
+              toast.info(`${data.targetTeam} won! The celebration popup has been automatically triggered for players.`);
+            }
+          }
+        }
+      }
+      // --------------------------------
+
       toast.scoresUpdated();
     } catch (err) {
       console.error(err);

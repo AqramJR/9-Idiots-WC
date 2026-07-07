@@ -1,4 +1,4 @@
-import type { LeaderboardEntry } from '@/types';
+import type { LeaderboardEntry, Prediction } from '@/types';
 import { PlayerSuccessHistory } from './PlayerSuccessHistory';
 
 const MEDALS: Record<number, string> = { 1: '🥇', 2: '🥈', 3: '🥉' };
@@ -9,17 +9,27 @@ export function LeaderboardRow({
   nickname,
   expanded,
   onToggle,
+  predictions,
 }: {
   entry: LeaderboardEntry;
   isCurrentUser: boolean;
   nickname?: string;
   expanded: boolean;
   onToggle: () => void;
+  predictions: Prediction[];
 }) {
   const medal = MEDALS[entry.rank];
   
-  const availableDoubles = 1 + (entry.earnedDoubles ?? 0) + (entry.bonusDoubles ?? 0) - (entry.usedDoubles ?? 0);
-  const availableTriples = 1 + (entry.bonusTriples ?? 0) - (entry.usedTriples ?? 0);
+  // Calculate live token usage directly from the raw predictions table
+  const userPreds = predictions.filter((p) => p.userId === entry.id);
+  const liveUsedDoubles = userPreds.filter((p) => p.multiplier === 'double').length;
+  const liveUsedTriples = userPreds.filter((p) => p.multiplier === 'triple').length;
+  
+  // Compute earned doubles live so it updates instantly when exacts increase
+  const liveEarnedDoubles = Math.floor(entry.totalExact / 3);
+
+  const availableDoubles = 1 + liveEarnedDoubles + (entry.bonusDoubles ?? 0) - liveUsedDoubles;
+  const availableTriples = 1 + (entry.bonusTriples ?? 0) - liveUsedTriples;
 
   return (
     <div

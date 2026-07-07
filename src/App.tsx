@@ -8,64 +8,68 @@ import { LeaderboardPage } from '@/components/leaderboard/LeaderboardPage';
 import { ProfilePage } from '@/components/profile/ProfilePage';
 import { StatsPage } from '@/components/stats/StatsPage';
 import { RequireIdentity } from '@/router/RequireIdentity';
+import { VideoPopup } from '@/components/common/VideoPopup';
 
 export default function App() {
   return (
-    <Routes>
-      <Route path="/" element={<LandingPage />} />
-      <Route path="/join" element={<JoinForm />} />
+    <>
+      <VideoPopup />
+      <Routes>
+        <Route path="/" element={<LandingPage />} />
+        <Route path="/join" element={<JoinForm />} />
 
-      <Route
-        path="/matches"
-        element={
-          <RequireIdentity>
-            <Layout>
-              <MatchesPage />
-            </Layout>
-          </RequireIdentity>
-        }
-      />
-      <Route
-        path="/leaderboard"
-        element={
-          <RequireIdentity>
-            <Layout>
-              <LeaderboardPage />
-            </Layout>
-          </RequireIdentity>
-        }
-      />
-      <Route
-        path="/profile"
-        element={
-          <RequireIdentity>
-            <Layout>
-              <ProfilePage />
-            </Layout>
-          </RequireIdentity>
-        }
-      />
-      <Route
-        path="/stats"
-        element={
-          <RequireIdentity>
-            <Layout>
-              <StatsPage />
-            </Layout>
-          </RequireIdentity>
-        }
-      />
+        <Route
+          path="/matches"
+          element={
+            <RequireIdentity>
+              <Layout>
+                <MatchesPage />
+              </Layout>
+            </RequireIdentity>
+          }
+        />
+        <Route
+          path="/leaderboard"
+          element={
+            <RequireIdentity>
+              <Layout>
+                <LeaderboardPage />
+              </Layout>
+            </RequireIdentity>
+          }
+        />
+        <Route
+          path="/profile"
+          element={
+            <RequireIdentity>
+              <Layout>
+                <ProfilePage />
+              </Layout>
+            </RequireIdentity>
+          }
+        />
+        <Route
+          path="/stats"
+          element={
+            <RequireIdentity>
+              <Layout>
+                <StatsPage />
+              </Layout>
+            </RequireIdentity>
+          }
+        />
 
-      <Route
-        path="/admin"
-        element={
-          <Layout>
-            <AdminPage />
-          </Layout>
-        }
-      />
+        <Route
+          path="/admin"
+          element={
+            <Layout>
+              <AdminPage />
+            </Layout>
+          }
+        />
 
-      <Route path="*" element={<LandingPage />} />
-    </Routes>
+        <Route path="*" element={<LandingPage />} />
+      </Routes>
+    </>
   );
 }

@@ -11,9 +11,7 @@ const firebaseConfig = {
   appId: import.meta.env.VITE_FIREBASE_APP_ID,
 };
 
-// Helpful console warning if env vars are missing (common first-run issue)
 if (!firebaseConfig.apiKey) {
-  // eslint-disable-next-line no-console
   console.warn(
     '[9 idiots WC] Firebase env vars are missing. Copy .env.example to .env and fill in your project credentials.'
   );

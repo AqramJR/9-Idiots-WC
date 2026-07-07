@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useLeaderboard } from '@/hooks/useLeaderboard';
+import { useAllPredictions } from '@/hooks/useAllPredictions';
 import { LeaderboardRow } from './LeaderboardRow';
 import { RowSkeleton } from '@/components/common/Skeleton';
 import { EmptyState } from '@/components/common/EmptyState';
@@ -11,8 +12,11 @@ const LAST_NICKNAME_STILL = 'لسه حصالة برده';
 
 export function LeaderboardPage() {
   const { identity } = useAuth();
-  const { leaderboard, loading } = useLeaderboard(true);
+  const { leaderboard, loading: boardLoading } = useLeaderboard(true);
+  const { predictions, loading: predsLoading } = useAllPredictions();
   const [expandedId, setExpandedId] = useState<string | null>(null);
+
+  const loading = boardLoading || predsLoading;
 
   const lastEntry = leaderboard.length > 1 ? leaderboard[leaderboard.length - 1] : null;
   const prevLastId = useRef<string | null>(null);
@@ -34,13 +38,12 @@ export function LeaderboardPage() {
 
       <div className="glass-card mb-6 p-5">
         <h2 className="mb-3 text-xs font-semibold uppercase tracking-wider text-chalk-500">How scoring works</h2>
-        {/* Updated to a 6-column grid on large screens to fit all the new features! */}
         <div className="grid grid-cols-2 gap-3 text-center sm:grid-cols-3 lg:grid-cols-6">
           <RuleCard icon="🎯" points="+3" label="Exact score" />
           <RuleCard icon="✅" points="+1" label="Predict the winner" />
           <RuleCard icon="❌" points="0" label="Wrong prediction" />
           <RuleCard icon="🔥" points="+3, +6..." label="Exact streak bonus" />
-          <RuleCard icon="💎" points="x2" label="Double (Earns 1 per 3 Exacts)" />
+          <RuleCard icon="💎" points="x2" label="Double (Earn 1 per 3 Exacts)" />
           <RuleCard icon="☠️" points="x3 / -3" label="Triple (High Risk!)" />
         </div>
       </div>
@@ -80,6 +83,7 @@ export function LeaderboardPage() {
               nickname={nickname}
               expanded={expandedId === entry.id}
               onToggle={() => setExpandedId((cur) => (cur === entry.id ? null : entry.id))}
+              predictions={predictions}
             />
           );
         })}
